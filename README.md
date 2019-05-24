@@ -13,3 +13,5 @@ All you need to do is to download this project and compile it. I have developed 
 4. Before opening the project in QtCreator, you also need to create a /pro.user file with menu entry File -> Create user file. 
 5. Open the .pro file created in QtCreator. 
 
+# Note:
+I am currently using QtCreator version 4.6.0 since it is the last one that uses Clang which I found to be buggy.
