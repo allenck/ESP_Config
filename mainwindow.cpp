@@ -8,6 +8,7 @@
 #include "tablemodel.h"
 #include <QtXml>
 #include <QUuid>
+#include <QMessageBox>
 
 MainWindow::MainWindow(QWidget *parent) :
     QMainWindow(parent),
@@ -26,6 +27,7 @@ MainWindow::MainWindow(QWidget *parent) :
     connect(ui->actionSources, SIGNAL(triggered(bool)), this, SLOT(viewSources()));
     ui->actionCreate_User_file->setToolTip("Create user file");
     connect(ui->actionCreate_User_file, SIGNAL(triggered(bool)), this, SLOT(createUserFile()));
+    connect(ui->actionExit, SIGNAL(triggered(bool)), this, SLOT(onExit()));
 
     QProcessEnvironment env = QProcessEnvironment::systemEnvironment();
     toolChainPath = env.value("Home", "")+ QDir::separator() +"esp/xtensa-esp32-elf" +QDir::separator();
@@ -127,7 +129,7 @@ bool MainWindow::onMakefile()
   }
  }
  viewHeaders();
-
+ _dirty = true;
  return true;
 }
 
@@ -323,7 +325,9 @@ bool MainWindow::writeProFile()
  {
   QTextStream out(&file);
   out << "\tTARGET = " << target << "\n";
-  out << "\n";
+  out << "\n\n";
+  out << "IDF_PATH =" << idf_path;
+  out << "\n\n";
   out << "\tINCLUDEPATH += ";
   QDir dir(pwd);
   qSort(includePaths.begin(), includePaths.end() );
@@ -368,6 +372,7 @@ bool MainWindow::writeProFile()
   }
   out << "\n\n";
   file.close();
+  _dirty = false;
  }
 }
 
@@ -473,3 +478,41 @@ void MainWindow::createUserFile()
  //if(!user.exists())
   writeUserFile(filename);
 }
+
+void MainWindow::closeEvent(QCloseEvent *event)
+{
+ onExit();
+}
+
+void MainWindow::onExit()
+{
+ checkDirty();
+ checkUserFile();
+}
+bool MainWindow::checkDirty()
+{
+ if(QMessageBox::warning(this, tr("Project File Chaned"), tr("The project file has changed .\nDo you want to save it?"),
+                         QMessageBox::Yes, QMessageBox::No) == QMessageBox::Yes)
+ {
+  writeProFile();
+  return true;
+ }
+ return false;
+}
+bool MainWindow::checkUserFile()
+{
+ if(target == "")
+  return true;
+ QFileInfo info(pwd + QDir::separator() + target + ".pro.user");
+ if(!info.exists())
+ {
+  if(QMessageBox::warning(this, tr("No User file"), tr("A user file has not yet been created.\nDo you want to create one?"),
+                          QMessageBox::Yes, QMessageBox::No) == QMessageBox::Yes)
+  {
+   createUserFile();
+   return true;
+  }
+ }
+ return false;
+}
+

@@ -20,12 +20,14 @@ public:
     bool parseSourceFile(QString path);
     QString headerFilePath(QString name);
 
+
 public slots:
     bool onMakefile();
     bool writeProFile();
     void viewHeaders();
     void viewSources();
     void createUserFile();
+    void onExit();
 
 private:
     Ui::MainWindow *ui;
@@ -43,6 +45,11 @@ private:
     QString toolChainPath;
     QString idf_path;
     bool writeUserFile(QString fileName);
+    bool _dirty = false;
+
+    void closeEvent(QCloseEvent *event);
+    bool checkDirty();
+    bool checkUserFile();
 };
 
 #endif // MAINWINDOW_H
