@@ -85,8 +85,8 @@ bool MainWindow::onMakefile()
  {
   QFileInfo info(fileNames.at(0));
   pwd = info.absolutePath();
-  QDir pwdDir(pwd);
-  target= pwdDir.dirName();
+  QDir pwdDir(pwd); // pwd is Makefile's directory
+  target= pwdDir.dirName();  // target will be project' dir name
   componentDir = "../"+pwdDir.dirName();
   QTextStream stream(&data);
   QString line;
@@ -99,7 +99,7 @@ bool MainWindow::onMakefile()
     {
      if(sl.at(0).trimmed() == QString("PROJECT_NAME"))
      {
-      name = sl.at(1);
+      name = sl.at(1).trimmed();
      }
      else if(sl.at(0).trimmed() == QString("a") && sl.at(1) == QString("$(shell pwd)"))
      {
@@ -318,7 +318,7 @@ QString MainWindow::headerFilePath(QString inName)
 bool MainWindow::writeProFile()
 {
 
- QString filename = pwd + QDir::separator() + target + ".pro";
+ QString filename = pwd + QDir::separator() + name + ".pro";
  qDebug() << "write pro file: " << filename;
  QFile file(filename);
  if(file.open(QFile::WriteOnly | QFile::Truncate))
@@ -474,7 +474,7 @@ bool MainWindow::writeUserFile(QString fileName)
 
 void MainWindow::createUserFile()
 {
- QString filename = pwd + QDir::separator() + target + ".pro.user";
+ QString filename = pwd + QDir::separator() + name + ".pro.user";
  //QFileInfo user(filename);
  //if(!user.exists())
   writeUserFile(filename);
