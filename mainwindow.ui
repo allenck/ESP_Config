@@ -59,7 +59,7 @@
   <widget class="QStatusBar" name="statusBar"/>
   <action name="actionMakefile">
    <property name="text">
-    <string>Makefile</string>
+    <string>Open Makefile</string>
    </property>
   </action>
   <action name="actionSave">

@@ -15,7 +15,10 @@ MainWindow::MainWindow(QWidget *parent) :
     ui(new Ui::MainWindow)
 {
     ui->setupUi(this);
-    espComponents = new Components();
+    componentDirs = QMap<QString, Components*>();
+    componentDirs.insert("IDF_PATH", new Components());
+    //espComponents = new Components();
+
 
     ui->actionMakefile->setToolTip(tr("Specify the project's Makefile location"));
     connect(ui->actionMakefile, SIGNAL(triggered(bool)), this, SLOT(onMakefile()));
@@ -49,17 +52,18 @@ bool MainWindow::parseMakefile(QString path)
 {
  QFileInfo info(path);
  QDir dir(info.absolutePath());
- while(!dir.path().isEmpty() )
- {
+// while(!dir.path().isEmpty() )
+// {
   QStringList list = dir.entryList();
 
   if(list.contains("components"))
   {
-   projComponents = new Components(dir.absolutePath());
+   //projComponents = new Components(dir.absolutePath());
+
    return true;
   }
-  dir.cdUp();
- }
+//  dir.cdUp();
+// }
  return false;
 }
 
@@ -77,7 +81,8 @@ bool MainWindow::onMakefile()
 
  QFileInfo info(fileNames.at(0));
 
- components = new Components(info.path());
+ //components = new Components(info.path());
+ componentDirs.insert("", new Components(info.path()));
 
  QFile data(fileNames.at(0));
  parseMakefile(fileNames.at(0));
@@ -92,7 +97,8 @@ bool MainWindow::onMakefile()
   QString line;
   while (stream.readLineInto(&line))
   {
-   if(line.contains(":="))
+   line = line.trimmed();
+   if(line.startsWith("PROJECT_NAME") && line.contains(":=")  )
    {
     QStringList sl = line.split(":=");
     if(sl.count()==2)
@@ -101,20 +107,16 @@ bool MainWindow::onMakefile()
      {
       name = sl.at(1).trimmed();
      }
-     else if(sl.at(0).trimmed() == QString("a") && sl.at(1) == QString("$(shell pwd)"))
-     {
-     }
-     else if((sl.at(0).trimmed() == QString("b")) && (sl.at(1) == QString("$(dir $(patsubst %/,%,$(dir $(a))))")))
-     {
-     }
-     else if(sl.at(0).trimmed() == "EXCLUDE_COMPONENTS")
-     {
-
-     }
     }
    }
+   else if(line.startsWith("include"))
+   {
+    QString iPath = line.remove("include").trimmed();
+    processInclude(iPath);
+   }
+
   }
-  QMapIterator<QString, QString> iter(components->sources());
+  QMapIterator<QString, QString> iter(componentDirs.value("")->sources());
   while(iter.hasNext())
   {
    iter.next();
@@ -151,6 +153,8 @@ bool MainWindow::parseSourceFile(QString path)
      {
       header = line.mid(line.indexOf("<")+1, line.indexOf(">") - line.indexOf("<")-1);
       qDebug() << "source file: " << info.fileName() << " includes: " << header;
+      if(header.contains(QDir::separator()))
+       headerFilePath(header);
       if(!headers.contains(header))
       {
        QString path = headerFilePath(header);
@@ -158,7 +162,7 @@ bool MainWindow::parseSourceFile(QString path)
         headers.insert(header, path);
         //parseSourceFile(path + QDir::separator() + header);
         bool bFound = false;
-        QStringList list = components->headers().values();
+        QStringList list = componentDirs.value("")->headers().values();
         foreach(QString p, list)
         {
          if(p.endsWith(header))
@@ -168,6 +172,24 @@ bool MainWindow::parseSourceFile(QString path)
          }
         }
         if(!bFound)
+        {
+         QMapIterator<QString, Components*> iter(componentDirs);
+         while(iter.hasNext())
+         {
+          iter.next();
+          list = iter.value()->headers().values();
+          foreach(QString p, list)
+          {
+           if(p.endsWith(header))
+           {
+            parseSourceFile(p);
+            bFound = true;
+           }
+          }
+         }
+        }
+   #if 0
+        if(projComponents != nullptr && !bFound)
         {
          list = projComponents->headers().values();
          foreach(QString p, list)
@@ -191,6 +213,7 @@ bool MainWindow::parseSourceFile(QString path)
           }
          }
         }
+#endif
       }
      }
     }
@@ -207,7 +230,7 @@ bool MainWindow::parseSourceFile(QString path)
         headers.insert(header, path);
         //parseSourceFile(path + QDir::separator() + header);
         bool bFound = false;
-        QStringList list = components->headers().values();
+        QStringList list = componentDirs.value("")->headers().values();
         foreach(QString p, list)
         {
          if(p.endsWith(header))
@@ -217,6 +240,24 @@ bool MainWindow::parseSourceFile(QString path)
          }
         }
         if(!bFound)
+        {
+         QMapIterator<QString, Components*> iter(componentDirs);
+         while(iter.hasNext())
+         {
+          iter.next();
+          list = iter.value()->headers().values();
+          foreach(QString p, list)
+          {
+           if(p.endsWith(header))
+           {
+            parseSourceFile(p);
+            bFound = true;
+           }
+          }
+         }
+        }
+#if 0
+        if(projComponents != nullptr && !bFound)
         {
          list = projComponents->headers().values();
          foreach(QString p, list)
@@ -240,6 +281,7 @@ bool MainWindow::parseSourceFile(QString path)
           }
          }
         }
+#endif
       }
      }
     }
@@ -262,6 +304,24 @@ QString MainWindow::headerFilePath(QString inName)
  int ix=name.lastIndexOf(QDir::separator());
  if(ix != -1)
   name = name.mid(ix+1);
+ QMapIterator<QString, Components*> iter(componentDirs);
+ while (iter.hasNext())
+ {
+  iter.next();
+  if(iter.value()->headers().contains(name))
+  {
+   QString path = iter.value()->headers().value(name);
+   QString prePath = path.remove(inName);
+   //QFileInfo info(path);
+   if(!includePaths.contains(prePath))
+   {
+    includePaths.append(prePath);
+    qDebug() << "add " << prePath << " to includePaths";
+   }
+   return prePath;
+  }
+ }
+#if 0
  if(components->headers().contains(name))
  {
   QString path = components->headers().value(name);
@@ -273,7 +333,8 @@ QString MainWindow::headerFilePath(QString inName)
   }
   return info.absolutePath();
  }
- if(projComponents->headers().contains(name))
+ Components* projComponents = componentDirs->value("");
+ if(projComponents != nullptr && projComponents->headers().contains(name))
  {
   QString path = projComponents->headers().value(name);
   QFileInfo info(path);
@@ -311,6 +372,7 @@ QString MainWindow::headerFilePath(QString inName)
    }
   }
  }
+#endif
  qDebug() << name << " not found";
  return "";
 }
@@ -360,17 +422,32 @@ bool MainWindow::writeProFile()
   }
   out << "\n\n";
   out << "\tSOURCES += ";
+  QMapIterator<QString, Components*> iter (componentDirs);
+  while(iter.hasNext())
+  {
+   iter.next();
+   foreach(QString src, iter.value()->sources().values())
+   {
+    out << "\\\n\t\t\t";
+    out << dir.relativeFilePath(src) << " ";
+   }
+  }
+#if 0
   foreach(QString src, components->sources().values())
   {
    out << "\\\n\t\t\t";
    out << dir.relativeFilePath(src) << " ";
   }
-  foreach(QString src, projComponents->sources().values())
+  if(projComponents != nullptr)
   {
-   out << "\\\n\t\t\t";
-   out << dir.relativeFilePath(src) << " ";
+   foreach(QString src, projComponents->sources().values())
+   {
+    out << "\\\n\t\t\t";
+    out << dir.relativeFilePath(src) << " ";
+   }
+   out << "\n\n";
   }
-  out << "\n\n";
+#endif
   file.close();
   _dirty = false;
  }
@@ -378,10 +455,11 @@ bool MainWindow::writeProFile()
 
 void MainWindow::viewHeaders()
 {
+
  QList<ComponentListEntry*>* cList = new QList<ComponentListEntry*>();
- foreach (QString s, components->headers().keys())
+ foreach (QString s, componentDirs.value("")->headers().keys())
  {
-  ComponentListEntry* entry = new ComponentListEntry(s, components->headers().value(s), false);
+  ComponentListEntry* entry = new ComponentListEntry(s, componentDirs.value("")->headers().value(s), false);
   cList->append(entry);
  }
  ui->tv1->setModel(new TableModel(cList));
@@ -391,8 +469,8 @@ void MainWindow::viewHeaders()
 void MainWindow::viewSources()
 {
  QList<ComponentListEntry*>* cList = new QList<ComponentListEntry*>();
- foreach (QString s, components->sources().keys()) {
-  cList->append(new ComponentListEntry(s, components->sources().value(s), false));
+ foreach (QString s, componentDirs.value("")->sources().keys()) {
+  cList->append(new ComponentListEntry(s, componentDirs.value("")->sources().value(s), false));
  }
  ui->tv1->setModel(new TableModel(cList));
  ui->tv1->resizeColumnsToContents();
@@ -461,7 +539,7 @@ bool MainWindow::writeUserFile(QString fileName)
   }
  }
  file.close();
- QFile ofile(pwd + QDir::separator()+ target + ".pro.user");
+ QFile ofile(fileName);
  {
   if(ofile.open(QIODevice::WriteOnly | QIODevice::Truncate))
   {
@@ -502,6 +580,7 @@ bool MainWindow::checkDirty()
 }
 bool MainWindow::checkUserFile()
 {
+
  if(target == "")
   return true;
  QFileInfo info(pwd + QDir::separator() + target + ".pro.user");
@@ -517,3 +596,28 @@ bool MainWindow::checkUserFile()
  return false;
 }
 
+void MainWindow::processInclude(QString iPath)
+{
+ QString key;
+ if(iPath.startsWith("$("))
+ {
+  key = iPath.mid(2, iPath.indexOf(")") -2);
+  QProcessEnvironment env = QProcessEnvironment::systemEnvironment();
+
+  QString envPath = env.value(key);
+  QString path = iPath.mid(iPath.indexOf(")")+1);
+
+  // need to also decode .mk file
+  QFileInfo info(path);
+  QDir dir(envPath);
+  QStringList list = dir.entryList();
+  if(list.contains("components"))
+  {
+   componentDirs.insert(key, new Components(dir.absolutePath()));
+  }
+  if(info.fileName().endsWith(".mk"))
+  {
+   QString makefile = envPath + info.absolutePath();
+  }
+ }
+}

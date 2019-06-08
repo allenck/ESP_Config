@@ -38,7 +38,7 @@ void Components::getFiles(QString path)
  QDir dir(path);
  QFileInfoList infoList;
 
- infoList = dir.entryInfoList(QDir::AllEntries | QDir::NoDotAndDotDot);
+ infoList = dir.entryInfoList(QDir::AllEntries | QDir::NoDotAndDotDot | QDir::NoSymLinks);
  if(infoList.isEmpty())
   return;
  foreach (QFileInfo info, infoList) {
@@ -48,9 +48,9 @@ void Components::getFiles(QString path)
   }
   else
   {
-   if(info.fileName().contains(".cpp") || info.fileName().contains(".c"))
+   if(info.fileName().endsWith(".cpp") || info.fileName().endsWith(".c"))
     _sources.insert(info.fileName(), info.filePath());
-   if(info.fileName().contains(".hpp") || info.fileName().contains(".h"))
+   if(info.fileName().endsWith(".hpp") || info.fileName().endsWith(".h"))
     _headers.insert(info.fileName(), info.filePath());
   }
  }

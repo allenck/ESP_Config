@@ -31,9 +31,10 @@ public slots:
 
 private:
     Ui::MainWindow *ui;
-    Components* espComponents;
-    Components* projComponents;
-    Components* components;
+    //Components* espComponents = nullptr;
+    //Components* projComponents = nullptr;
+    //Components* components = nullptr;
+    QMap<QString, Components*> componentDirs;
     QString target;
     QString pwd;
     QString name;
@@ -50,6 +51,7 @@ private:
     void closeEvent(QCloseEvent *event);
     bool checkDirty();
     bool checkUserFile();
+    void processInclude(QString iPath);
 };
 
 #endif // MAINWINDOW_H
