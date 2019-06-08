@@ -388,17 +388,28 @@ bool MainWindow::writeProFile()
   QTextStream out(&file);
   out << "\tTARGET = " << target << "\n";
   out << "\n\n";
-  out << "IDF_PATH =" << idf_path;
-  out << "\n\n";
+  //out << "IDF_PATH =" << idf_path;
+  //out << "\n\n";
+  QStringList keys = componentDirs.keys();
+  QProcessEnvironment env = QProcessEnvironment::systemEnvironment();
+  foreach (QString str, keys) {
+   out << "\t" << str << " = " << env.value(str) << "\n\n";
+  }
   out << "\tINCLUDEPATH += ";
   QDir dir(pwd);
   qSort(includePaths.begin(), includePaths.end() );
   foreach(QString p, includePaths)
   {
-   if(p.startsWith(idf_path))
+   foreach (QString str, keys)
    {
-    out << "\\\n\t\t\t";
-    out << "$${IDF_PATH}" << p.mid(idf_path.length()) << " ";
+    if(str == "")
+     continue;
+    if(p.startsWith(env.value(str)))
+    {
+     out << "\\\n\t\t\t";
+     out << "$${" << str << "}" << p.mid(env.value(str).length()) << " ";
+     break;
+    }
    }
   }
   out << "\n\n";
