@@ -393,7 +393,10 @@ bool MainWindow::writeProFile()
   QStringList keys = componentDirs.keys();
   QProcessEnvironment env = QProcessEnvironment::systemEnvironment();
   foreach (QString str, keys) {
-   out << "\t" << str << " = " << env.value(str) << "\n\n";
+   if(str != "")
+   {
+    out << "\t" << str << " = " << env.value(str) << "\n\n";
+   }
   }
   out << "\tINCLUDEPATH += ";
   QDir dir(pwd);
