@@ -428,22 +428,36 @@ bool MainWindow::writeProFile()
   out << "\tINCLUDEPATH += ";
   foreach(QString p, includePaths)
   {
-   if(!p.startsWith(idf_path))
+   foreach (QString str, keys)
    {
-    out << "\\\n\t\t\t";
-    out << dir.relativeFilePath(p) << " ";
+    if(str == "")
+    continue;
+    if(p.startsWith(env.value(str)))
+    {
+     out << "\\\n\t\t\t";
+     out << "$${" << str << "}" << p.mid(env.value(str).length()) << " ";
+     break;
+    }
    }
   }
   out << "\n\n";
   out << "\tSOURCES += ";
   QMapIterator<QString, Components*> iter (componentDirs);
+  //QProcessEnvironment env = QProcessEnvironment::systemEnvironment();
   while(iter.hasNext())
   {
    iter.next();
-   foreach(QString src, iter.value()->sources().values())
+   QString envKey = iter.key();
+   QString envPath = env.value(envKey);
+   foreach(QString p, iter.value()->sources().values())
    {
     out << "\\\n\t\t\t";
-    out << dir.relativeFilePath(src) << " ";
+    if(envKey != "" && p.startsWith(envPath))
+    {
+     out << "$${" << envKey << "}" << p.mid(envPath.length()) << " ";
+    }
+    else
+     out << dir.relativeFilePath(p) << " ";
    }
   }
 #if 0
