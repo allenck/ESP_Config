@@ -16,7 +16,7 @@ MainWindow::MainWindow(QWidget *parent) :
 {
     ui->setupUi(this);
     componentDirs = QMap<QString, Components*>();
-    componentDirs.insert("IDF_PATH", new Components());
+    //componentDirs.insert("IDF_PATH", new Components());
     //espComponents = new Components();
 
 
@@ -188,32 +188,6 @@ bool MainWindow::parseSourceFile(QString path)
           }
          }
         }
-   #if 0
-        if(projComponents != nullptr && !bFound)
-        {
-         list = projComponents->headers().values();
-         foreach(QString p, list)
-         {
-          if(p.endsWith(header))
-          {
-           parseSourceFile(p);
-           bFound = true;
-          }
-         }
-        }
-        if(!bFound)
-        {
-         list = espComponents->headers().values();
-         foreach(QString p, list)
-         {
-          if(p.endsWith(header))
-          {
-           parseSourceFile(p);
-           bFound = true;
-          }
-         }
-        }
-#endif
       }
      }
     }
@@ -256,32 +230,6 @@ bool MainWindow::parseSourceFile(QString path)
           }
          }
         }
-#if 0
-        if(projComponents != nullptr && !bFound)
-        {
-         list = projComponents->headers().values();
-         foreach(QString p, list)
-         {
-          if(p.endsWith(header))
-          {
-           parseSourceFile(p);
-           bFound = true;
-          }
-         }
-        }
-        if(!bFound)
-        {
-         list = espComponents->headers().values();
-         foreach(QString p, list)
-         {
-          if(p.endsWith(header))
-          {
-           parseSourceFile(p);
-           bFound = true;
-          }
-         }
-        }
-#endif
       }
      }
     }
@@ -313,7 +261,7 @@ QString MainWindow::headerFilePath(QString inName)
    QString path = iter.value()->headers().value(name);
    QString prePath = path.remove(inName);
    //QFileInfo info(path);
-   if(!includePaths.contains(prePath))
+   if(!includePaths.contains(prePath) && !(prePath.endsWith(".h")|| prePath.endsWith(".hpp") ))
    {
     includePaths.append(prePath);
     qDebug() << "add " << prePath << " to includePaths";
@@ -321,58 +269,6 @@ QString MainWindow::headerFilePath(QString inName)
    return prePath;
   }
  }
-#if 0
- if(components->headers().contains(name))
- {
-  QString path = components->headers().value(name);
-  QFileInfo info(path);
-  if(!includePaths.contains(info.absolutePath()))
-  {
-   includePaths.append(info.absolutePath());
-   qDebug() << "add " << info.absolutePath() << " to includePaths";
-  }
-  return info.absolutePath();
- }
- Components* projComponents = componentDirs->value("");
- if(projComponents != nullptr && projComponents->headers().contains(name))
- {
-  QString path = projComponents->headers().value(name);
-  QFileInfo info(path);
-  if(!includePaths.contains(info.absolutePath()))
-  {
-   includePaths.append(info.absolutePath());
-   qDebug() << "add " << info.absolutePath() << " to includePaths";
-  }
-  return info.absolutePath();
- }
- if(espComponents->headers().contains(name))
- {
-  QString path = espComponents->headers().value(name);
-  if(ix == -1)
-  {
-   QFileInfo info(path);
-   if(!includePaths.contains(info.absolutePath()))
-   {
-    includePaths.append(info.absolutePath());
-    qDebug() << "add " << info.absolutePath() << " to includePaths";
-   }
-   return info.absolutePath();
-  }
-  else // relative path specified
-  {
-   if(path.contains(inName))
-   {
-    QString absPath = path.replace(QDir::separator()+inName, "");
-    if(!includePaths.contains(absPath))
-    {
-     includePaths.append(absPath);
-     qDebug() << "add " << absPath << " to includePaths";
-    }
-    return absPath;
-   }
-  }
- }
-#endif
  qDebug() << name << " not found";
  return "";
 }
@@ -395,12 +291,16 @@ bool MainWindow::writeProFile()
   foreach (QString str, keys) {
    if(str != "")
    {
-    out << "\t" << str << " = " << env.value(str) << "\n\n";
+    QString ePath =  env.value(str);
+    QString home = QDir::homePath();
+    if(ePath.startsWith(home))
+     ePath = ePath.replace(home, "$(HOME)");
+    out << "\t" << str << " = " << ePath << "\n\n";
    }
   }
   out << "\tINCLUDEPATH += ";
   QDir dir(pwd);
-  qSort(includePaths.begin(), includePaths.end() );
+  std::sort(includePaths.begin(), includePaths.end() );
   foreach(QString p, includePaths)
   {
    foreach (QString str, keys)
@@ -431,13 +331,20 @@ bool MainWindow::writeProFile()
    foreach (QString str, keys)
    {
     if(str == "")
-    continue;
-    if(p.startsWith(env.value(str)))
     {
-     out << "\\\n\t\t\t";
-     out << "$${" << str << "}" << p.mid(env.value(str).length()) << " ";
-     break;
+     if(p.startsWith(pwd))
+     {
+      out << "\\\n\t\t\t";
+      out << dir.relativeFilePath(p) << " ";
+      break;
+     }
     }
+//    if(p.startsWith(env.value(str)))
+//    {
+//     out << "\\\n\t\t\t";
+//     out << "$${" << str << "}" << p.mid(env.value(str).length()) << " ";
+//     break;
+//    }
    }
   }
   out << "\n\n";
@@ -460,25 +367,10 @@ bool MainWindow::writeProFile()
      out << dir.relativeFilePath(p) << " ";
    }
   }
-#if 0
-  foreach(QString src, components->sources().values())
-  {
-   out << "\\\n\t\t\t";
-   out << dir.relativeFilePath(src) << " ";
-  }
-  if(projComponents != nullptr)
-  {
-   foreach(QString src, projComponents->sources().values())
-   {
-    out << "\\\n\t\t\t";
-    out << dir.relativeFilePath(src) << " ";
-   }
-   out << "\n\n";
-  }
-#endif
   file.close();
   _dirty = false;
  }
+ return true;
 }
 
 void MainWindow::viewHeaders()
@@ -576,6 +468,7 @@ bool MainWindow::writeUserFile(QString fileName)
    ofile.close();
   }
  }
+ return true;
 }
 
 void MainWindow::createUserFile()
@@ -586,7 +479,7 @@ void MainWindow::createUserFile()
   writeUserFile(filename);
 }
 
-void MainWindow::closeEvent(QCloseEvent *event)
+void MainWindow::closeEvent(QCloseEvent *)
 {
  onExit();
 }
@@ -598,20 +491,24 @@ void MainWindow::onExit()
 }
 bool MainWindow::checkDirty()
 {
- if(QMessageBox::warning(this, tr("Project File Chaned"), tr("The project file has changed .\nDo you want to save it?"),
-                         QMessageBox::Yes, QMessageBox::No) == QMessageBox::Yes)
+ if(_dirty)
  {
-  writeProFile();
-  return true;
+  if(QMessageBox::warning(this, tr("Project File Chaned"), tr("The project file has changed .\nDo you want to save it?"),
+                          QMessageBox::Yes, QMessageBox::No) == QMessageBox::Yes)
+  {
+   writeProFile();
+   return true;
+  }
+  return false;
  }
- return false;
+ return true;
 }
 bool MainWindow::checkUserFile()
 {
 
  if(target == "")
   return true;
- QFileInfo info(pwd + QDir::separator() + target + ".pro.user");
+ QFileInfo info(pwd + QDir::separator() + name + ".pro.user");
  if(!info.exists())
  {
   if(QMessageBox::warning(this, tr("No User file"), tr("A user file has not yet been created.\nDo you want to create one?"),
