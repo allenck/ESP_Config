@@ -4,11 +4,19 @@
 #include <QFileDialog>
 #include <QTextStream>
 #include <QDebug>
-#include <QProcessEnvironment>
 #include "tablemodel.h"
 #include <QtXml>
 #include <QUuid>
 #include <QMessageBox>
+#include <QStringList>
+#include <QDialog>
+#include <QBoxLayout>
+#include <QLabel>
+#include <QLineEdit>
+#include <QPushButton>
+#include <QFileDialog>
+#include <QStringList>
+#include <QString>
 
 MainWindow::MainWindow(QWidget *parent) :
     QMainWindow(parent),
@@ -16,9 +24,8 @@ MainWindow::MainWindow(QWidget *parent) :
 {
     ui->setupUi(this);
     componentDirs = QMap<QString, Components*>();
-    //componentDirs.insert("IDF_PATH", new Components());
+    componentDirs.insert("IDF_PATH", new Components());
     //espComponents = new Components();
-
 
     ui->actionMakefile->setToolTip(tr("Specify the project's Makefile location"));
     connect(ui->actionMakefile, SIGNAL(triggered(bool)), this, SLOT(onMakefile()));
@@ -31,10 +38,13 @@ MainWindow::MainWindow(QWidget *parent) :
     ui->actionCreate_User_file->setToolTip("Create user file");
     connect(ui->actionCreate_User_file, SIGNAL(triggered(bool)), this, SLOT(createUserFile()));
     connect(ui->actionExit, SIGNAL(triggered(bool)), this, SLOT(onExit()));
+    connect(ui->actionAdd_define, SIGNAL(triggered(bool)), this, SLOT(onAddDefine()));
+    connect(ui->actionAdd_path_to_components_or_SDK, SIGNAL(triggered(bool)), this, SLOT(onAddPath()));
 
-    QProcessEnvironment env = QProcessEnvironment::systemEnvironment();
+    env = QProcessEnvironment::systemEnvironment();
     toolChainPath = env.value("Home", "")+ QDir::separator() +"esp/xtensa-esp32-elf" +QDir::separator();
     idf_path = env.value("IDF_PATH");
+    defs = QProcessEnvironment();
     toolChainPaths = QStringList();
     toolChainPaths << toolChainPath + "xtensa-esp32-elf/include"
                    << toolChainPath + "toolChainPath + xtensa-esp32-elf/include/c++/5.2.0"
@@ -48,24 +58,238 @@ MainWindow::~MainWindow()
     delete ui;
 }
 
-bool MainWindow::parseMakefile(QString path)
+bool MainWindow::parseMakefile(QTextStream* stream, QString path, QString fn)
 {
- QFileInfo info(path);
- QDir dir(info.absolutePath());
-// while(!dir.path().isEmpty() )
-// {
-  QStringList list = dir.entryList();
-
-  if(list.contains("components"))
+ if(fn.endsWith("project.mk"))
+  return true;
+ currMakefile.push(fn);
+ if(stream->atEnd())
+  throw MakeException("Unexpected EOF");
+ QString line;
+ while (stream->readLineInto(&line))
+ {
+  line = line.trimmed();
+  if(line.startsWith("#")) continue;
+  if(line.isEmpty()) continue;
+  if(line.startsWith("ifeq"))
   {
-   //projComponents = new Components(dir.absolutePath());
-
-   return true;
+   try
+   {
+    if(evaluateIf(line.mid(4).trimmed()))
+    {
+     parseMakefile(stream, path, fn);
+    }
+    else
+    {
+     bypass(stream);
+    }
+   }
+   catch(UnknownVariable& ex)
+   {
+    qDebug() << ex.reason();
+    bypass(stream);
+   }
+   continue;
   }
-//  dir.cdUp();
-// }
+  else if(line.startsWith("ifneq"))
+  {
+   try
+   {
+    if(!evaluateIf(line.mid(4).trimmed()))
+    {
+     parseMakefile(stream, path, fn);
+    }
+    else
+    {
+     bypass(stream);
+    }
+   }
+   catch(UnknownVariable& ex)
+   {
+    qDebug() << ex.reason();
+    bypass(stream);
+   }
+  }
+  if(line.startsWith("ifdef"))
+  {
+   if(evaluateDef(line.mid(4).trimmed())!= "")
+   {
+    parseMakefile(stream, path, fn);
+   }
+   else
+   {
+    bypass(stream);
+   }
+  }
+  else if(line.startsWith("ifndef"))
+  {
+   try
+   {
+    if(evaluateDef(line.mid(4).trimmed())== "")
+    {
+     parseMakefile(stream, path, fn);
+    }
+    else
+    {
+     bypass(stream);
+    }
+   }
+   catch(UnknownVariable& ex)
+   {
+    qDebug() << ex.reason();
+    bypass(stream);
+   }
+  }
+  else if(line.startsWith("endif"))
+   return false;
+  else if(line.startsWith("$(error "))
+  {
+   //QMessageBox::critical(this, tr("Undefined value"), line.mid(8, line.lastIndexOf(")")-8 ));
+   throw MakeException(line.mid(8, line.lastIndexOf(")")-8));
+  }
+  else if(line.startsWith("PROJECT_NAME") && line.contains(":=")  )
+  {
+   QStringList sl = line.split(":=");
+   if(sl.count()==2)
+   {
+    if(sl.at(0).trimmed() == QString("PROJECT_NAME"))
+    {
+     name = sl.at(1).trimmed();
+    }
+   }
+  }
+  else if(line.startsWith("include"))
+  {
+   QString iPath = line.remove("include").trimmed();
+   processInclude(iPath);
+  }
+  else if(line.startsWith("COMPONENT_ADD_INCLUDEDIRS"))
+  {
+   if(line.contains(":="))
+   {
+    QStringList sl = line.split(":=");
+    if(sl.count()>=2)
+    {
+     if(sl.at(1)== ".")
+     {
+      componentDirs.insertMulti("", new Components(path));
+     }
+    }
+   }
+  }
+  else if(line.startsWith("EXTRA_COMPONENT_DIRS"))
+  {
+   if(line.contains("+="))
+    line = line.mid(line.indexOf("+=")+2).trimmed();
+   QStringList sl = line.split(" ");
+   foreach(QString str, sl)
+   {
+    // TODO: handle possible continuation char (backslash)
+    if(!str.endsWith("\\"))
+    {
+     path = expandLine(str);
+     componentDirs.insertMulti("", new Components(path));
+    }
+   }
+  }
+  else if(line.contains(":="))
+  {
+   QStringList sl = line.split(":=");
+   if(sl.count()>=2)
+   {
+    QString val = expandLine(sl.at(1).trimmed());
+    QString key = sl.at(0).trimmed();
+    if(!env.contains(key))
+    {
+     env.insert(key, val);
+     qDebug() << "add to env: '" << sl.at(0) << "', " << val;
+    }
+   }
+  }
+ }
+
+
+ QDir dir(path);
+ QStringList nameFilters;
+ nameFilters << "*.cpp" << "*.c" << "*.cc" << "*.h" << "*.hpp";
+ QFileInfoList infolist = dir.entryInfoList(nameFilters, QDir::Files);
+ foreach (QFileInfo info, infolist)
+ {
+  if(info.fileName().endsWith(".h") || info.fileName().endsWith(".hpp") )
+  {
+   if(!includePaths.contains(info.absolutePath()))
+     componentDirs.insert("", new Components(info.absolutePath()));
+  }
+  parseSourceFile(info.absoluteFilePath());
+ }
+ currMakefile.pop();
  return false;
 }
+
+bool MainWindow::evaluateIf(QString inLine)
+{
+ QString line;
+ if(inLine.startsWith("("))
+ {
+  line = inLine.mid(1, inLine.lastIndexOf(")")-1);
+  QStringList sl = line.split(",");
+  if(sl.count() < 2)
+   return false;  // error
+//  if(sl.at(0).startsWith("$("))
+//  {
+//   QString val = env.value(sl.at(0).mid(2, sl.at(0).indexOf(")") -2));
+//   return (val == sl.at(1));
+//  }
+
+   return expandLine(sl.at(0)) == sl.at(1);
+
+ }
+ return false;
+}
+
+QString MainWindow::expandLine(QString line)
+{
+ if(!line.contains("$(")) return line;
+ if(!line.contains(")")) throw BadPath(tr("missing end parenthesis: %1").arg(line));
+ QString var = line.mid(line.indexOf("$("), line.indexOf(")")-line.indexOf("$(")+1);
+ QString envKey = line.mid(line.indexOf("$(")+2, line.indexOf(")")-line.indexOf("$(")-2);
+ if(!env.contains(envKey))
+ {
+  qDebug() << "env not found: " << envKey;
+  throw UnknownVariable(tr("unknown variable %1").arg(envKey));
+ }
+ QString val = env.value(envKey);
+ line = line.replace(var, val);
+ return expandLine(line);
+}
+
+QString MainWindow::evaluateDef(QString inLine)
+{
+ QString line;
+ if(inLine != "")
+ {
+   return defs.value(line);
+ }
+ return "";
+}
+
+void MainWindow::bypass(QTextStream *stream)
+{
+ QString line = stream->readLine();
+ while(true)
+ {
+  if(line.startsWith("endif")) return;
+  if(stream->atEnd())
+   return;
+
+  if(line.startsWith("ifeq") || line.startsWith("ifneq") || line.startsWith("ifdef") ||line.startsWith("ifndef"))
+  {
+   bypass(stream);
+  }
+  line = stream->readLine();
+ }
+}
+
 
 bool MainWindow::onMakefile()
 {
@@ -80,52 +304,36 @@ bool MainWindow::onMakefile()
   return false;
 
  QFileInfo info(fileNames.at(0));
+ qDebug() << "process " << fileNames.at(0);
+
 
  //components = new Components(info.path());
  componentDirs.insert("", new Components(info.path()));
 
  QFile data(fileNames.at(0));
- parseMakefile(fileNames.at(0));
  if(data.open(QFile::ReadOnly))
  {
   QFileInfo info(fileNames.at(0));
   pwd = info.absolutePath();
+  env.insert("PROJECT_PATH", pwd);
   QDir pwdDir(pwd); // pwd is Makefile's directory
   target= pwdDir.dirName();  // target will be project' dir name
   componentDir = "../"+pwdDir.dirName();
   QTextStream stream(&data);
-  QString line;
-  while (stream.readLineInto(&line))
+  try
   {
-   line = line.trimmed();
-   if(line.startsWith("PROJECT_NAME") && line.contains(":=")  )
-   {
-    QStringList sl = line.split(":=");
-    if(sl.count()==2)
-    {
-     if(sl.at(0).trimmed() == QString("PROJECT_NAME"))
-     {
-      name = sl.at(1).trimmed();
-     }
-    }
-   }
-   else if(line.startsWith("include"))
-   {
-    QString iPath = line.remove("include").trimmed();
-    processInclude(iPath);
-   }
-
+   QFileInfo(fileNames.at(0));
+   parseMakefile(&stream, info.absolutePath(), fileNames.at(0));
   }
-  QMapIterator<QString, QString> iter(componentDirs.value("")->sources());
-  while(iter.hasNext())
+  catch(MakeException& ex)
   {
-   iter.next();
-   QString key = iter.key();
-   if(key.endsWith(".c") || key.endsWith(".cpp"))
-   {
-    QString path = iter.value();
-    parseSourceFile(path);
-   }
+   QMessageBox::critical(this, tr("Exception"), ex.reason());
+   return false;
+  }
+  catch(BadPath& ex)
+  {
+   QMessageBox::critical(this, tr("Exception"), ex.reason() + " in "+ currMakefile.top());
+   return false;
   }
  }
  viewHeaders();
@@ -287,7 +495,7 @@ bool MainWindow::writeProFile()
   //out << "IDF_PATH =" << idf_path;
   //out << "\n\n";
   QStringList keys = componentDirs.keys();
-  QProcessEnvironment env = QProcessEnvironment::systemEnvironment();
+  //QProcessEnvironment env = QProcessEnvironment::systemEnvironment();
   foreach (QString str, keys) {
    if(str != "")
    {
@@ -298,6 +506,9 @@ bool MainWindow::writeProFile()
     out << "\t" << str << " = " << ePath << "\n\n";
    }
   }
+
+  //getIncludePaths();
+
   out << "\tINCLUDEPATH += ";
   QDir dir(pwd);
   std::sort(includePaths.begin(), includePaths.end() );
@@ -524,25 +735,139 @@ bool MainWindow::checkUserFile()
 void MainWindow::processInclude(QString iPath)
 {
  QString key;
- if(iPath.startsWith("$("))
+ QString path = expandLine(iPath);
+
+ // need to also decode .mk file
+ QFileInfo info( path);
+ QString fn;
+ if(QFileInfo(info.path()).exists() && info.fileName().endsWith(".mk"))
  {
-  key = iPath.mid(2, iPath.indexOf(")") -2);
-  QProcessEnvironment env = QProcessEnvironment::systemEnvironment();
-
-  QString envPath = env.value(key);
-  QString path = iPath.mid(iPath.indexOf(")")+1);
-
-  // need to also decode .mk file
-  QFileInfo info(path);
-  QDir dir(envPath);
-  QStringList list = dir.entryList();
-  if(list.contains("components"))
+  fn = info.absoluteFilePath();
+  qDebug() << "process " << fn;
+  QFile file(fn);
+  if(file.open(QIODevice::ReadOnly))
   {
-   componentDirs.insert(key, new Components(dir.absolutePath()));
+   QTextStream stream(&file);
+   parseMakefile(&stream, info.absolutePath(), fn);
   }
-  if(info.fileName().endsWith(".mk"))
+  else
   {
-   QString makefile = envPath + info.absolutePath();
+   throw BadPath(tr("not found: %1").arg(fn));
+  }
+ }
+}
+
+void MainWindow::onAddPath()
+{
+ createDialog(tr("Add path to components/SDK"), env);
+ dlg->exec();
+ componentDirs.insert(dialogKey->text(), new Components(dialogValue->text()));
+}
+
+void MainWindow::onAddDefine()
+{
+ createDialog(tr("Add define"),  defs);
+ dlg->exec();
+}
+
+void MainWindow::createDialog(QString label, QProcessEnvironment env)
+{
+ dlg = new QDialog();
+ dlgenv = env;
+ QVBoxLayout* vLayout;
+ dialogOk = new QPushButton("OK");
+ dialogOk->setEnabled(false);
+ dlg->setLayout(vLayout = new QVBoxLayout());
+ vLayout->addWidget(new QLabel(label));
+ vLayout->setObjectName("vLayout");
+ QHBoxLayout* hLayout1 = new QHBoxLayout();
+ hLayout1->setObjectName("vLayout");
+ dialogKey = new QLineEdit();
+ hLayout1->addWidget(new QLabel(tr("Key:")));
+ hLayout1->addWidget(dialogKey);
+ hLayout1->addWidget(new QLabel(tr("value:")));
+ connect(dialogKey, SIGNAL(textChanged(QString)), this, SLOT(onDialogKeyChanged(QString)));
+ QPushButton* browse = new QPushButton(tr("Browse"));
+ dialogValue = new QLineEdit();
+ dialogValue->setPlaceholderText("enter environment value");
+ connect(dialogValue, SIGNAL(textChanged(QString)), this, SLOT(onDialogValueChanged(QString)));
+ hLayout1->addWidget(dialogValue);
+ hLayout1->addWidget(browse);
+ connect(browse, SIGNAL(clicked(bool)), this, SLOT(onBrowse()));
+ vLayout->addLayout(hLayout1);
+ QHBoxLayout* hLayout2 = new QHBoxLayout();
+ hLayout2->setObjectName("hLayout2");
+ QPushButton* cancel = new QPushButton("Cancel");
+ hLayout2->addWidget(dialogOk);
+ hLayout2->addWidget(cancel);
+ vLayout->addLayout(hLayout2);
+ connect(dialogOk, SIGNAL(clicked(bool)), this, SLOT(onDialogOk()));
+ connect(cancel, SIGNAL(clicked(bool)), this, SLOT(onDialogCancel()));
+ dlg->exec();
+}
+
+void MainWindow::onDialogCancel()
+{
+ dlg->reject();
+}
+
+void MainWindow::onDialogOk()
+{
+ QString val = dialogValue->text().trimmed();
+ if(val.isEmpty())
+  return;
+ env.insert(dialogKey->text().trimmed(), val);
+ dlg->accept();
+}
+
+void MainWindow::onBrowse()
+{
+ QString path = QFileDialog::getExistingDirectory(this, tr("Get Path"));
+ dialogValue->setText(path);
+}
+
+void MainWindow::onDialogKeyChanged(QString s)
+{
+ if(s.isEmpty())
+ {
+  dialogOk->setEnabled(false);
+  return;
+ }
+ dialogValue->setText(env.value(s.trimmed()));
+ if( !dialogValue->text().isEmpty())
+  dialogOk->setEnabled(true);
+ else
+  dialogOk->setEnabled(false);
+}
+
+void MainWindow::onDialogValueChanged(QString s)
+{
+ if(s.isEmpty())
+ {
+  dialogOk->setEnabled(false);
+  return;
+ }
+ if(!dialogValue->text().isEmpty())
+  dialogOk->setEnabled(true);
+ else
+  dialogOk->setEnabled(false);
+}
+
+void MainWindow::getIncludePaths()
+{
+ QMapIterator<QString, Components*> iter(componentDirs);
+ while(iter.hasNext())
+ {
+  iter.next();
+  QString key = iter.key();
+  Components* comp = iter.value();
+  QMapIterator<QString, QString> hdrs(comp->headers());
+  while(hdrs.hasNext())
+  {
+   hdrs.next();
+   QFileInfo info(hdrs.value());
+   if(!includePaths.contains(info.absolutePath()))
+    includePaths.append(info.absolutePath());
   }
  }
 }

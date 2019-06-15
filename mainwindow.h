@@ -3,11 +3,17 @@
 
 #include <QMainWindow>
 #include <QMap>
+#include <QProcessEnvironment>
+#include <QTextStream>
+#include "exceptions.h"
+#include <QStack>
 
 namespace Ui {
 class MainWindow;
 }
 
+class QPushButton;
+class QLineEdit;
 class Components;
 class MainWindow : public QMainWindow
 {
@@ -16,7 +22,7 @@ class MainWindow : public QMainWindow
 public:
     explicit MainWindow(QWidget *parent = 0);
     ~MainWindow();
-    bool parseMakefile(QString path);
+    bool parseMakefile(QTextStream *stream, QString path, QString fn);
     bool parseSourceFile(QString path);
     QString headerFilePath(QString name);
 
@@ -28,6 +34,8 @@ public slots:
     void viewSources();
     void createUserFile();
     void onExit();
+    void onAddDefine();
+    void onAddPath();
 
 private:
     Ui::MainWindow *ui;
@@ -47,11 +55,34 @@ private:
     QString idf_path;
     bool writeUserFile(QString fileName);
     bool _dirty = false;
+    QProcessEnvironment env;
+    QProcessEnvironment defs;
+    bool evaluateIf(QString);
+    QString evaluateDef(QString);
+    void bypass(QTextStream* stream);
 
     void closeEvent(QCloseEvent *event);
     bool checkDirty();
     bool checkUserFile();
     void processInclude(QString iPath);
+    QString expandLine(QString line);
+    QStack<QString> currMakefile;
+    void getIncludePaths();
+
+private slots:
+    void onDialogOk();
+    void onDialogCancel();
+    void onBrowse();
+    void onDialogKeyChanged(QString);
+    void onDialogValueChanged(QString);
+
+protected:
+    void createDialog(QString label, QProcessEnvironment env);
+    QDialog* dlg = nullptr;
+    QLineEdit* dialogValue = nullptr;
+    QLineEdit* dialogKey = nullptr;
+    QPushButton* dialogOk = nullptr;
+    QProcessEnvironment dlgenv;
 };
 
 #endif // MAINWINDOW_H

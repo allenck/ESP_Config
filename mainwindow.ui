@@ -45,8 +45,16 @@
     <addaction name="actionHeaders"/>
     <addaction name="actionSources"/>
    </widget>
+   <widget class="QMenu" name="menuTools">
+    <property name="title">
+     <string>Tools</string>
+    </property>
+    <addaction name="actionAdd_define"/>
+    <addaction name="actionAdd_path_to_components_or_SDK"/>
+   </widget>
    <addaction name="menuFile"/>
    <addaction name="menuView"/>
+   <addaction name="menuTools"/>
   </widget>
   <widget class="QToolBar" name="mainToolBar">
    <attribute name="toolBarArea">
@@ -85,6 +93,26 @@
   <action name="actionCreate_User_file">
    <property name="text">
     <string>Create User file</string>
+   </property>
+  </action>
+  <action name="actionAdd_Environment_Variable">
+   <property name="text">
+    <string>Add Environment Variable</string>
+   </property>
+  </action>
+  <action name="actionAdd_SDK_location">
+   <property name="text">
+    <string>Add SDK location</string>
+   </property>
+  </action>
+  <action name="actionAdd_define">
+   <property name="text">
+    <string>Add define</string>
+   </property>
+  </action>
+  <action name="actionAdd_path_to_components_or_SDK">
+   <property name="text">
+    <string>Add path to components or SDK</string>
    </property>
   </action>
  </widget>

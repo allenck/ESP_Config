@@ -2,6 +2,7 @@
 #include <QDir>
 #include <QFileInfo>
 #include <QProcessEnvironment>
+#include "exceptions.h"
 
 /* Get list of components, sources and header files */
 
@@ -22,7 +23,8 @@ Components::Components(QString path, QObject *parent) : QObject(parent)
 void Components::init()
 {
   QDir dir = QDir(path);
-  if(!dir.exists()) return;
+  if(!dir.exists())
+   throw BadPath(tr("path not found: %1").arg(path));
 
   QFileInfoList comps = dir.entryInfoList(QDir::AllDirs | QDir::NoDotAndDotDot);
   foreach(QFileInfo info, comps)

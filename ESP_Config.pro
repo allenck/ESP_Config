@@ -32,7 +32,8 @@ SOURCES += \
 HEADERS += \
         mainwindow.h \
     components.h \
-    tablemodel.h
+    tablemodel.h \
+    exceptions.h
 
 FORMS += \
         mainwindow.ui
