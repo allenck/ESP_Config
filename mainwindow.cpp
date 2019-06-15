@@ -502,7 +502,7 @@ QString MainWindow::headerFilePath(QString inName)
  qDebug() << name << " not found";
  return "";
 }
-
+#if 0
 bool MainWindow::writeProFile()
 {
 
@@ -570,6 +570,100 @@ bool MainWindow::writeProFile()
       out << "\\\n\t\t\t";
       out << dir.relativeFilePath(p) << " ";
       break;
+     }
+    }
+//    if(p.startsWith(env.value(str)))
+//    {
+//     out << "\\\n\t\t\t";
+//     out << "$${" << str << "}" << p.mid(env.value(str).length()) << " ";
+//     break;
+//    }
+   }
+  }
+  out << "\n\n";
+  out << "\tSOURCES += ";
+  QMapIterator<QString, Components*> iter (componentDirs);
+  //QProcessEnvironment env = QProcessEnvironment::systemEnvironment();
+  while(iter.hasNext())
+  {
+   iter.next();
+   QString envKey = iter.key();
+   QString envPath = env.value(envKey);
+   foreach(QString p, iter.value()->sources().values())
+   {
+    out << "\\\n\t\t\t";
+    if(envKey != "" && p.startsWith(envPath))
+    {
+     out << "$${" << envKey << "}" << p.mid(envPath.length()) << " ";
+    }
+    else
+     out << dir.relativeFilePath(p) << " ";
+   }
+  }
+  file.close();
+  _dirty = false;
+ }
+ return true;
+}
+#endif
+bool MainWindow::writeProFile()
+{
+
+ QString filename = pwd + QDir::separator() + name + ".pro";
+ qDebug() << "write pro file: " << filename;
+ QFile file(filename);
+ if(file.open(QFile::WriteOnly | QFile::Truncate))
+ {
+  QTextStream out(&file);
+  out << "\tTARGET = " << target << "\n";
+  out << "\n\n";
+
+  includePaths.clear();
+
+  getIncludePaths();
+
+  out << "\tINCLUDEPATH += ";
+  QDir dir(pwd);
+  QString home = QDir::homePath();
+  std::sort(includePaths.begin(), includePaths.end() );
+  foreach(QString p, includePaths)
+  {
+//   foreach (QString str, keys)
+//   {
+//    if(str == "")
+//     continue;
+    if(p.startsWith(pwd))
+     continue;
+    if(p.startsWith(home))
+     p = p.replace(home, "$(HOME)");
+     out << "\\\n\t\t\t";
+     out << p;
+//     break;
+//    }
+//   }
+  }
+  out << "\n\n";
+  out << "\tXTENSA_TOOLCHAIN += $$(HOME)/esp/xtensa-esp32-elf\n";
+  out << "\tINCLUDEPATH += \\\n\t\t\t$${XTENSA_TOOLCHAIN}/xtensa-esp32-elf/include \\\n";
+  out << "\t\t\t$${XTENSA_TOOLCHAIN}/xtensa-esp32-elf/include/c++/5.2.0 \\\n";
+  out << "\t\t\t$${XTENSA_TOOLCHAIN}/xtensa-esp32-elf/include/c++/5.2.0/xtensa-esp32-elf \\\n";
+  out << "\t\t\t$${XTENSA_TOOLCHAIN}/lib/gcc/xtensa-esp32-elf/5.2.0/include \\\n";
+  out << "\t\t\t$${XTENSA_TOOLCHAIN}/lib/gcc/xtensa-esp32-elf/5.2.0/include-fixed \\\n";
+  out << "\t\t\t$${XTENSA_TOOLCHAIN}/lib/gcc/xtensa-esp32-elf/include/sys \n";
+  out << "\n";
+
+  out << "\tINCLUDEPATH += ";
+  foreach(QString p, includePaths)
+  {
+   //foreach (QString str, keys)
+   {
+    //if(str == "")
+    {
+     if(p.startsWith(pwd))
+     {
+      out << "\\\n\t\t\t";
+      out << dir.relativeFilePath(p) << " ";
+//      break;
      }
     }
 //    if(p.startsWith(env.value(str)))
@@ -881,6 +975,8 @@ void MainWindow::getIncludePaths()
  {
   iter.next();
   QString key = iter.key();
+  if(key != "COMPONENT_DIRS")
+   continue;
   Components* comp = iter.value();
   QMapIterator<QString, QString> hdrs(comp->headers());
   while(hdrs.hasNext())
@@ -888,18 +984,24 @@ void MainWindow::getIncludePaths()
    hdrs.next();
    QFileInfo info(hdrs.value());
    if(!includePaths.contains(info.absolutePath()))
+   {
+    QDir dir(info.absolutePath());
     includePaths.append(info.absolutePath());
+    dir.cdUp();
+    if(!includePaths.contains(dir.path()))
+       includePaths.append(dir.path());
+   }
   }
  }
 }
 
-QString MainWindow::listComponents(QString wd)
+QProcess::ExitStatus MainWindow::listComponents(QString wd)
 {
  QProcess::ProcessError error;
  QProcess::ExitStatus exitStatus;
   makeProcess = new QProcess(this);
-  connect (makeProcess, SIGNAL(readyReadStandardOutput()), this, SLOT(processOutput()));  // connect process signals with your code
-  connect (makeProcess, SIGNAL(readyReadStandardError()), this, SLOT(processOutput()));  // same here
+  connect (makeProcess, SIGNAL(readyReadStandardOutput()), this, SLOT(processStdOutput()));  // connect process signals with your code
+  connect (makeProcess, SIGNAL(readyReadStandardError()), this, SLOT(processErrOutput()));  // same here
   makeProcess->setWorkingDirectory(wd);
   makeProcess->setProcessEnvironment(env);
   QString exec = "make";
@@ -910,22 +1012,47 @@ QString MainWindow::listComponents(QString wd)
   makeProcess->waitForFinished(); // sets current thread to sleep and waits for makeProcess end
   error = makeProcess->error();
   exitStatus = makeProcess->exitStatus();
-  QString all(makeProcess->readAll());
-  QString output(makeProcess->readAllStandardOutput());
-  return output;
+  return exitStatus;
 }
-void MainWindow::processOutput()
+
+void MainWindow::processStdOutput()
 {
-    //qDebug() << makeProcess->readAllStandardOutput();  // read normal output
-    ui->textEdit->append(makeProcess->readAllStandardOutput());
-    //qDebug() << makeProcess->readAllStandardError();  // read error channel
-    ui->textEdit->append(makeProcess->readAllStandardError());
+ ui->textEdit->setTextColor(QColor("black"));
+ QString output = makeProcess->readAllStandardOutput();
+ ui->textEdit->append(output);
+ QStringList sl = output.split("\n");
+ foreach (QString line, sl)
+ {
+  if(line.startsWith("COMPONENT_DIRS"))
+   currVariable = "COMPONENT_DIRS";
+  if(line.startsWith("TEST_COMPONENTS"))
+   currVariable = "TEST_COMPONENTS";
+  if(line.startsWith("TEST_EXCLUDE_COMPONENTS"))
+   currVariable = "TEST_EXCLUDE_COMPONENTS";
+  if(line.startsWith("COMPONENT_PATHS"))
+   currVariable = "COMPONENT_PATHS";
+  if(line.startsWith("/") && currVariable == "COMPONENT_DIRS" )
+  {
+   QFileInfo dir(line);
+   if(dir.isDir())
+    componentDirs.insertMulti(currVariable, new Components(line));
+  }
+ }
+}
+void MainWindow::processErrOutput()
+{
+ ui->textEdit->setTextColor(QColor("red"));
+ //qDebug() << makeProcess->readAllStandardError();  // read error channel
+ ui->textEdit->append(makeProcess->readAllStandardError());
 }
 void MainWindow::onListComponents()
 {
+ currVariable = "";
+ componentDirs.remove("COMPONENT_DIRS");
  if(pwd != nullptr)
  {
   ui->textEdit->setVisible(true);
+  ui->textEdit->clear();
   listComponents(pwd);
  }
 }

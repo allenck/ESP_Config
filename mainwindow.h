@@ -69,8 +69,9 @@ private:
     QString expandLine(QString line);
     QStack<QString> currMakefile;
     void getIncludePaths();
-    QString listComponents(QString wd);
+    QProcess::ExitStatus listComponents(QString wd);
     QProcess* makeProcess;
+    QString currVariable;
 
 private slots:
     void onDialogOk();
@@ -80,7 +81,8 @@ private slots:
     void onDialogValueChanged(QString);
     void onFileMenuAboutToShow();
     void onToolsMenuAboutToShow();
-    void processOutput();
+    void processStdOutput();
+    void processErrOutput();
 
 
 protected:
