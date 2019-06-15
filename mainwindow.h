@@ -36,6 +36,7 @@ public slots:
     void onExit();
     void onAddDefine();
     void onAddPath();
+    void onListComponents();
 
 private:
     Ui::MainWindow *ui;
@@ -68,6 +69,8 @@ private:
     QString expandLine(QString line);
     QStack<QString> currMakefile;
     void getIncludePaths();
+    QString listComponents(QString wd);
+    QProcess* makeProcess;
 
 private slots:
     void onDialogOk();
@@ -75,6 +78,10 @@ private slots:
     void onBrowse();
     void onDialogKeyChanged(QString);
     void onDialogValueChanged(QString);
+    void onFileMenuAboutToShow();
+    void onToolsMenuAboutToShow();
+    void processOutput();
+
 
 protected:
     void createDialog(QString label, QProcessEnvironment env);

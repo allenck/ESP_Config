@@ -17,6 +17,7 @@
 #include <QFileDialog>
 #include <QStringList>
 #include <QString>
+#include <QProcess>
 
 MainWindow::MainWindow(QWidget *parent) :
     QMainWindow(parent),
@@ -40,6 +41,11 @@ MainWindow::MainWindow(QWidget *parent) :
     connect(ui->actionExit, SIGNAL(triggered(bool)), this, SLOT(onExit()));
     connect(ui->actionAdd_define, SIGNAL(triggered(bool)), this, SLOT(onAddDefine()));
     connect(ui->actionAdd_path_to_components_or_SDK, SIGNAL(triggered(bool)), this, SLOT(onAddPath()));
+    connect(ui->actionList_components, SIGNAL(triggered(bool)), this, SLOT(onListComponents()));
+    ui->textEdit->setHidden(true);
+    connect(ui->menuFile, SIGNAL(aboutToShow()), this, SLOT(onFileMenuAboutToShow()));
+    connect(ui->menuTools, SIGNAL(aboutToShow()), this, SLOT(onToolsMenuAboutToShow()));
+
 
     env = QProcessEnvironment::systemEnvironment();
     toolChainPath = env.value("Home", "")+ QDir::separator() +"esp/xtensa-esp32-elf" +QDir::separator();
@@ -56,6 +62,17 @@ MainWindow::MainWindow(QWidget *parent) :
 MainWindow::~MainWindow()
 {
     delete ui;
+}
+
+void MainWindow::onFileMenuAboutToShow()
+{
+ ui->actionSave->setEnabled(pwd != nullptr);
+ ui->actionCreate_User_file->setEnabled(pwd != nullptr);
+}
+
+void MainWindow::onToolsMenuAboutToShow()
+{
+ ui->actionList_components->setEnabled(pwd != nullptr);
 }
 
 bool MainWindow::parseMakefile(QTextStream* stream, QString path, QString fn)
@@ -308,7 +325,6 @@ bool MainWindow::onMakefile()
 
 
  //components = new Components(info.path());
- componentDirs.insert("", new Components(info.path()));
 
  QFile data(fileNames.at(0));
  if(data.open(QFile::ReadOnly))
@@ -316,6 +332,8 @@ bool MainWindow::onMakefile()
   QFileInfo info(fileNames.at(0));
   pwd = info.absolutePath();
   env.insert("PROJECT_PATH", pwd);
+  componentDirs.insert("PROJECT_PATH", new Components(info.path()));
+
   QDir pwdDir(pwd); // pwd is Makefile's directory
   target= pwdDir.dirName();  // target will be project' dir name
   componentDir = "../"+pwdDir.dirName();
@@ -334,6 +352,10 @@ bool MainWindow::onMakefile()
   {
    QMessageBox::critical(this, tr("Exception"), ex.reason() + " in "+ currMakefile.top());
    return false;
+  }
+  catch(UnknownVariable& ex)
+  {
+   // ignore
   }
  }
  viewHeaders();
@@ -803,7 +825,6 @@ void MainWindow::createDialog(QString label, QProcessEnvironment env)
  vLayout->addLayout(hLayout2);
  connect(dialogOk, SIGNAL(clicked(bool)), this, SLOT(onDialogOk()));
  connect(cancel, SIGNAL(clicked(bool)), this, SLOT(onDialogCancel()));
- dlg->exec();
 }
 
 void MainWindow::onDialogCancel()
@@ -869,5 +890,42 @@ void MainWindow::getIncludePaths()
    if(!includePaths.contains(info.absolutePath()))
     includePaths.append(info.absolutePath());
   }
+ }
+}
+
+QString MainWindow::listComponents(QString wd)
+{
+ QProcess::ProcessError error;
+ QProcess::ExitStatus exitStatus;
+  makeProcess = new QProcess(this);
+  connect (makeProcess, SIGNAL(readyReadStandardOutput()), this, SLOT(processOutput()));  // connect process signals with your code
+  connect (makeProcess, SIGNAL(readyReadStandardError()), this, SLOT(processOutput()));  // same here
+  makeProcess->setWorkingDirectory(wd);
+  makeProcess->setProcessEnvironment(env);
+  QString exec = "make";
+  QStringList params;
+  params << "Makefile" << "list-components";
+  makeProcess->start(exec, params);
+  makeProcess->waitForStarted();
+  makeProcess->waitForFinished(); // sets current thread to sleep and waits for makeProcess end
+  error = makeProcess->error();
+  exitStatus = makeProcess->exitStatus();
+  QString all(makeProcess->readAll());
+  QString output(makeProcess->readAllStandardOutput());
+  return output;
+}
+void MainWindow::processOutput()
+{
+    //qDebug() << makeProcess->readAllStandardOutput();  // read normal output
+    ui->textEdit->append(makeProcess->readAllStandardOutput());
+    //qDebug() << makeProcess->readAllStandardError();  // read error channel
+    ui->textEdit->append(makeProcess->readAllStandardError());
+}
+void MainWindow::onListComponents()
+{
+ if(pwd != nullptr)
+ {
+  ui->textEdit->setVisible(true);
+  listComponents(pwd);
  }
 }

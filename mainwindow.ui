@@ -16,6 +16,9 @@
   <widget class="QWidget" name="centralWidget">
    <layout class="QVBoxLayout" name="verticalLayout">
     <item>
+     <widget class="QTextEdit" name="textEdit"/>
+    </item>
+    <item>
      <widget class="QTableView" name="tv1"/>
     </item>
    </layout>
@@ -51,6 +54,7 @@
     </property>
     <addaction name="actionAdd_define"/>
     <addaction name="actionAdd_path_to_components_or_SDK"/>
+    <addaction name="actionList_components"/>
    </widget>
    <addaction name="menuFile"/>
    <addaction name="menuView"/>
@@ -113,6 +117,11 @@
   <action name="actionAdd_path_to_components_or_SDK">
    <property name="text">
     <string>Add path to components or SDK</string>
+   </property>
+  </action>
+  <action name="actionList_components">
+   <property name="text">
+    <string>List components</string>
    </property>
   </action>
  </widget>
