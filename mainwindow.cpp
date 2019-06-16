@@ -717,7 +717,30 @@ bool MainWindow::writeProFile()
     else
      out << dir.relativeFilePath(p) << " ";
    }
-  }file.close();
+  }
+  out << "\n\n";
+  out << "\tHEADERS += ";
+  iter = QMapIterator<QString, Components*>(componentDirs);
+  //QProcessEnvironment env = QProcessEnvironment::systemEnvironment();
+  while(iter.hasNext())
+  {
+   iter.next();
+   QString envKey = iter.key();
+   if(envKey == (idf_path))
+    continue;
+   QString envPath = env.value(envKey);
+   foreach(QString p, iter.value()->headers().values())
+   {
+    out << "\\\n\t\t\t";
+    if(envKey != "" && p.startsWith(envPath))
+    {
+     out << "$${" << envKey << "}" << p.mid(envPath.length()) << " ";
+    }
+    else
+     out << dir.relativeFilePath(p) << " ";
+   }
+  }
+  file.close();
   _dirty = false;
  }
  return true;
