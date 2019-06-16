@@ -13,6 +13,8 @@ public:
     Components(QString path, QObject *parent = nullptr);
     QMap<QString, QString> sources();
     QMap<QString, QString> headers();
+    void update(QString path);
+    QStringList includeDirs;
 
 signals:
 

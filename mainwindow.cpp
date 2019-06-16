@@ -25,7 +25,7 @@ MainWindow::MainWindow(QWidget *parent) :
 {
     ui->setupUi(this);
     componentDirs = QMap<QString, Components*>();
-    componentDirs.insert("IDF_PATH", new Components());
+    //componentDirs.insert("IDF_PATH", new Components());
     //espComponents = new Components();
 
     ui->actionMakefile->setToolTip(tr("Specify the project's Makefile location"));
@@ -225,7 +225,6 @@ bool MainWindow::parseMakefile(QTextStream* stream, QString path, QString fn)
   }
  }
 
-
  QDir dir(path);
  QStringList nameFilters;
  nameFilters << "*.cpp" << "*.c" << "*.cc" << "*.h" << "*.hpp";
@@ -239,6 +238,7 @@ bool MainWindow::parseMakefile(QTextStream* stream, QString path, QString fn)
   }
   parseSourceFile(info.absoluteFilePath());
  }
+
  currMakefile.pop();
  return false;
 }
@@ -358,6 +358,7 @@ bool MainWindow::onMakefile()
    // ignore
   }
  }
+ onListComponents();
  viewHeaders();
  _dirty = true;
  return true;
@@ -618,29 +619,61 @@ bool MainWindow::writeProFile()
   out << "\tTARGET = " << target << "\n";
   out << "\n\n";
 
-  includePaths.clear();
+  QStringList keys = componentDirs.keys();
+  //QProcessEnvironment env = QProcessEnvironment::systemEnvironment();
+  foreach (QString str, keys) {
+   if(str != "")
+   {
+    QString ePath =  env.value(str);
+    QString home = QDir::homePath();
+    if(ePath.startsWith(home))
+     ePath = ePath.replace(home, "$(HOME)");
+    out << "\t" << str << " = " << ePath << "\n\n";
+   }
+  }
 
-  getIncludePaths();
 
   out << "\tINCLUDEPATH += ";
+
   QDir dir(pwd);
+#if 0
   QString home = QDir::homePath();
   std::sort(includePaths.begin(), includePaths.end() );
   foreach(QString p, includePaths)
   {
-//   foreach (QString str, keys)
-//   {
-//    if(str == "")
-//     continue;
-    if(p.startsWith(pwd))
+   foreach (QString str, keys)
+   {
+    if(str == "")
      continue;
+//    if(p.startsWith(pwd))
+//     continue;
     if(p.startsWith(home))
      p = p.replace(home, "$(HOME)");
      out << "\\\n\t\t\t";
      out << p;
-//     break;
+     break;
 //    }
-//   }
+   }
+  }
+#endif
+  QMapIterator<QString, Components*> iter(componentDirs);
+  while(iter.hasNext())
+  {
+   iter.next();
+   if(iter.key() == "" || iter.key() == "PROJECT_PATH")
+    continue;
+   QString envKey = iter.key();
+   QString envPath = env.value(envKey);
+
+   foreach (QString p, iter.value()->includeDirs) {
+    out << "\\\n\t\t\t";
+    if( p.startsWith(envPath))
+    {
+     out << "$${" << envKey << "}" << p.mid(envPath.length()) << " ";
+    }
+    else
+     out << dir.relativeFilePath(p) << " ";
+   }
   }
   out << "\n\n";
   out << "\tXTENSA_TOOLCHAIN += $$(HOME)/esp/xtensa-esp32-elf\n";
@@ -653,30 +686,21 @@ bool MainWindow::writeProFile()
   out << "\n";
 
   out << "\tINCLUDEPATH += ";
-  foreach(QString p, includePaths)
+  QString envKey = "PROJECT_PATH";
+  QString envPath = env.value(envKey);
+  foreach(QString p, componentDirs.value(envKey)->includeDirs)
   {
-   //foreach (QString str, keys)
-   {
-    //if(str == "")
-    {
-     if(p.startsWith(pwd))
-     {
-      out << "\\\n\t\t\t";
-      out << dir.relativeFilePath(p) << " ";
-//      break;
-     }
-    }
-//    if(p.startsWith(env.value(str)))
-//    {
-//     out << "\\\n\t\t\t";
-//     out << "$${" << str << "}" << p.mid(env.value(str).length()) << " ";
-//     break;
-//    }
-   }
+   out << "\\\n\t\t\t";
+//   if(envKey != "" && p.startsWith(envPath))
+//   {
+//    out << "$${" << envKey << "}" << p.mid(envPath.length()) << " ";
+//   }
+//   else
+    out << dir.relativeFilePath(p) << " ";
   }
   out << "\n\n";
   out << "\tSOURCES += ";
-  QMapIterator<QString, Components*> iter (componentDirs);
+  iter = QMapIterator<QString, Components*>(componentDirs);
   //QProcessEnvironment env = QProcessEnvironment::systemEnvironment();
   while(iter.hasNext())
   {
@@ -693,8 +717,7 @@ bool MainWindow::writeProFile()
     else
      out << dir.relativeFilePath(p) << " ";
    }
-  }
-  file.close();
+  }file.close();
   _dirty = false;
  }
  return true;
@@ -852,7 +875,7 @@ void MainWindow::processInclude(QString iPath)
 {
  QString key;
  QString path = expandLine(iPath);
-
+#if 0
  // need to also decode .mk file
  QFileInfo info( path);
  QString fn;
@@ -871,6 +894,14 @@ void MainWindow::processInclude(QString iPath)
    throw BadPath(tr("not found: %1").arg(fn));
   }
  }
+#else
+ QFileInfo info(path);
+ if(info.isDir())
+  componentDirs.insertMulti("", new Components(path));
+ else
+  componentDirs.insertMulti("", new Components(info.absolutePath()));
+#endif
+
 }
 
 void MainWindow::onAddPath()
@@ -1031,14 +1062,42 @@ void MainWindow::processStdOutput()
    currVariable = "TEST_EXCLUDE_COMPONENTS";
   if(line.startsWith("COMPONENT_PATHS"))
    currVariable = "COMPONENT_PATHS";
-  if(line.startsWith("/") && currVariable == "COMPONENT_DIRS" )
+  if(line.startsWith("/") && (currVariable == "COMPONENT_DIRS"  || currVariable == "COMPONENT_PATHS"))
   {
    QFileInfo dir(line);
+   QString key = "";
+
    if(dir.isDir())
-    componentDirs.insertMulti(currVariable, new Components(line));
+   {
+    foreach (QString envKey, componentDirs.keys())
+    {
+     if(line.startsWith(env.value(envKey)))
+      key = envKey;
+      break;
+    }
+    if(key == "")
+    {
+     if(line.startsWith(pwd))
+      key = "PROJECT_PATH";
+     else if (line.startsWith(idf_path))
+      key = "IDF_PATH";
+     else if(line.startsWith(QDir::homePath()))
+      key = "HOME";
+     else
+      key = "OTHER";
+    }
+    if(!componentDirs.contains(key))
+     componentDirs.insert(key, new Components(line));
+    else
+     componentDirs.value(key)->update(line);
+    QFileInfo info(line + QDir::separator() + "include");
+    if(info.exists() && !componentDirs.value(key)->includeDirs.contains(info.absoluteFilePath()))
+     componentDirs.value(key)->includeDirs.append(info.absoluteFilePath());
+   }
   }
  }
 }
+
 void MainWindow::processErrOutput()
 {
  ui->textEdit->setTextColor(QColor("red"));

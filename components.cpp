@@ -47,18 +47,35 @@ void Components::getFiles(QString path)
   if(info.isDir())
   {
    getFiles(info.filePath());
+   if(info.fileName() == "include")
+   {
+    QString p = info.absoluteFilePath();
+    if(!includeDirs.contains( p))
+     includeDirs.append(p);
+   }
   }
   else
   {
+   if(!includeDirs.contains( info.absolutePath()))
+    includeDirs.append(info.absolutePath());
    if(info.fileName().endsWith(".cpp") || info.fileName().endsWith(".c"))
     _sources.insert(info.fileName(), info.filePath());
    if(info.fileName().endsWith(".hpp") || info.fileName().endsWith(".h"))
+   {
     _headers.insert(info.fileName(), info.filePath());
+    if(!includeDirs.contains( info.absolutePath()))
+       includeDirs.append(info.absolutePath());
+   }
   }
  }
 }
 QMap<QString, QString> Components::sources() {return _sources;}
 QMap<QString, QString> Components::headers() {return _headers;}
+
+void Components::update(QString path)
+{
+ getFiles(path);
+}
 
 
 ComponentListEntry::ComponentListEntry(QString name, QString path, bool excluded)
@@ -72,3 +89,4 @@ QString ComponentListEntry::name() {return _name;}
 QString ComponentListEntry::path() {return _path;}
 bool ComponentListEntry::isExcluded() {return _excluded;}
 void ComponentListEntry::setExcluded(bool b) {this->_excluded = b;}
+
