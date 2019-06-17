@@ -72,6 +72,7 @@ private:
     QProcess::ExitStatus listComponents(QString wd);
     QProcess* makeProcess;
     QString currVariable;
+    bool pathHasSources(QString);
 
 private slots:
     void onDialogOk();

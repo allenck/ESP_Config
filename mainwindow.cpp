@@ -636,26 +636,6 @@ bool MainWindow::writeProFile()
   out << "\tINCLUDEPATH += ";
 
   QDir dir(pwd);
-#if 0
-  QString home = QDir::homePath();
-  std::sort(includePaths.begin(), includePaths.end() );
-  foreach(QString p, includePaths)
-  {
-   foreach (QString str, keys)
-   {
-    if(str == "")
-     continue;
-//    if(p.startsWith(pwd))
-//     continue;
-    if(p.startsWith(home))
-     p = p.replace(home, "$(HOME)");
-     out << "\\\n\t\t\t";
-     out << p;
-     break;
-//    }
-   }
-  }
-#endif
   QMapIterator<QString, Components*> iter(componentDirs);
   while(iter.hasNext())
   {
@@ -665,14 +645,18 @@ bool MainWindow::writeProFile()
    QString envKey = iter.key();
    QString envPath = env.value(envKey);
 
-   foreach (QString p, iter.value()->includeDirs) {
-    out << "\\\n\t\t\t";
-    if( p.startsWith(envPath))
+   foreach (QString p, iter.value()->includeDirs)
+   {
+    if(pathHasSources(p))
     {
-     out << "$${" << envKey << "}" << p.mid(envPath.length()) << " ";
+     out << "\\\n\t\t\t";
+     if( p.startsWith(envPath))
+     {
+      out << "$${" << envKey << "}" << p.mid(envPath.length()) << " ";
+     }
+     else
+      out << dir.relativeFilePath(p) << " ";
     }
-    else
-     out << dir.relativeFilePath(p) << " ";
    }
   }
   out << "\n\n";
@@ -690,13 +674,11 @@ bool MainWindow::writeProFile()
   QString envPath = env.value(envKey);
   foreach(QString p, componentDirs.value(envKey)->includeDirs)
   {
-   out << "\\\n\t\t\t";
-//   if(envKey != "" && p.startsWith(envPath))
-//   {
-//    out << "$${" << envKey << "}" << p.mid(envPath.length()) << " ";
-//   }
-//   else
+   if(pathHasSources(p))
+   {
+    out << "\\\n\t\t\t";
     out << dir.relativeFilePath(p) << " ";
+   }
   }
   out << "\n\n";
   out << "\tSOURCES += ";
@@ -750,13 +732,17 @@ void MainWindow::viewHeaders()
 {
 
  QList<ComponentListEntry*>* cList = new QList<ComponentListEntry*>();
- foreach (QString s, componentDirs.value("PROJECT_PATH")->headers().keys())
+ if(componentDirs.contains("PROJECT_PATH"))
  {
-  ComponentListEntry* entry = new ComponentListEntry(s, componentDirs.value("")->headers().value(s), false);
-  cList->append(entry);
+  foreach (QString s, componentDirs.value("PROJECT_PATH")->headers().keys())
+  {
+   ComponentListEntry* entry = new ComponentListEntry(s, componentDirs.value("")->headers().value(s), false);
+   cList->append(entry);
+  }
+  ui->tv1->setModel(new TableModel(cList));
+  ui->tv1->resizeColumnsToContents();
+
  }
- ui->tv1->setModel(new TableModel(cList));
- ui->tv1->resizeColumnsToContents();
 }
 
 void MainWindow::viewSources()
@@ -1137,4 +1123,24 @@ void MainWindow::onListComponents()
   ui->textEdit->clear();
   listComponents(pwd);
  }
+}
+
+bool MainWindow::pathHasSources(QString path)
+{
+ // return true if path exists and contains source files or headers
+ QFileInfo info(path);
+ if(!info.exists())
+  return false;
+ if(info.isFile())
+  return false;
+ QDir dir(path);
+ if(dir.dirName() == "freertos" || dir.dirName() == "lwip")
+  qDebug() << path;
+ if(dir.dirName() == "include")
+  return true;
+ QFileInfoList list = dir.entryInfoList(QStringList() << "*.c" << "*.cpp" << "*.h" << "*.hpp",QDir::Files | QDir::NoDotAndDotDot | QDir::NoSymLinks);
+ dir.cdUp();
+ if(dir.dirName() == "include")
+  return true;
+ return !(list.count() == 0);
 }
