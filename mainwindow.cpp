@@ -750,7 +750,7 @@ void MainWindow::viewHeaders()
 {
 
  QList<ComponentListEntry*>* cList = new QList<ComponentListEntry*>();
- foreach (QString s, componentDirs.value("")->headers().keys())
+ foreach (QString s, componentDirs.value("PROJECT_PATH")->headers().keys())
  {
   ComponentListEntry* entry = new ComponentListEntry(s, componentDirs.value("")->headers().value(s), false);
   cList->append(entry);
@@ -762,7 +762,7 @@ void MainWindow::viewHeaders()
 void MainWindow::viewSources()
 {
  QList<ComponentListEntry*>* cList = new QList<ComponentListEntry*>();
- foreach (QString s, componentDirs.value("")->sources().keys()) {
+ foreach (QString s, componentDirs.value("PROJECT_PATH")->sources().keys()) {
   cList->append(new ComponentListEntry(s, componentDirs.value("")->sources().value(s), false));
  }
  ui->tv1->setModel(new TableModel(cList));
