@@ -40,10 +40,11 @@ public slots:
 
 private:
     Ui::MainWindow *ui;
-    //Components* espComponents = nullptr;
+    Components* espComponents = nullptr;
     //Components* projComponents = nullptr;
     //Components* components = nullptr;
     QMap<QString, Components*> componentDirs;
+
     QString target;
     QString pwd;
     QString name;
@@ -73,6 +74,7 @@ private:
     QProcess* makeProcess;
     QString currVariable;
     bool pathHasSources(QString);
+    void process_sdkconfig(QTextStream *out);
 
 private slots:
     void onDialogOk();
