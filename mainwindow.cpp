@@ -610,7 +610,7 @@ bool MainWindow::writeProFile()
 bool MainWindow::writeProFile()
 {
 
- QString filename = pwd + QDir::separator() + name + ".pro";
+ QString filename = pwd + QDir::separator()+ target + ".pro";
  qDebug() << "write pro file: " << filename;
  QFile file(filename);
  if(file.open(QFile::WriteOnly | QFile::Truncate))
@@ -736,7 +736,7 @@ void MainWindow::viewHeaders()
  {
   foreach (QString s, componentDirs.value("PROJECT_PATH")->headers().keys())
   {
-   ComponentListEntry* entry = new ComponentListEntry(s, componentDirs.value("")->headers().value(s), false);
+   ComponentListEntry* entry = new ComponentListEntry(s, componentDirs.value("PROJECT_PATH")->headers().value(s), false);
    cList->append(entry);
   }
   ui->tv1->setModel(new TableModel(cList));
@@ -1134,8 +1134,8 @@ bool MainWindow::pathHasSources(QString path)
  if(info.isFile())
   return false;
  QDir dir(path);
- if(dir.dirName() == "freertos" || dir.dirName() == "lwip")
-  qDebug() << path;
+// if(dir.dirName() == "freertos" || dir.dirName() == "lwip")
+//  qDebug() << path;
  if(dir.dirName() == "include")
   return true;
  QFileInfoList list = dir.entryInfoList(QStringList() << "*.c" << "*.cpp" << "*.h" << "*.hpp",QDir::Files | QDir::NoDotAndDotDot | QDir::NoSymLinks);
