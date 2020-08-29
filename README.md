@@ -16,7 +16,7 @@ All you need to do is to download this project and compile it. I have developed 
 # Setting up Build Options
 In order to be able to build the program in Qt Creator, some changes need to be made to the project's Build settings.
 From the left sidebar select *Projects* then *Build. 
-![IMAGE]{BuildSettings.png "Build Settings")
+![IMAGE](BuildSettings.png "Build Settings")
 1. Set the *QTDIR* environment variable to blank.
 2. Edit the *PATH* environment variable to:
 	a. Remove any reference to the QT path.
