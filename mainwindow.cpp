@@ -675,6 +675,7 @@ bool MainWindow::writeProFile()
     }
    }
   }
+#if 0
   *out << "\n\n";
   *out << "\tXTENSA_TOOLCHAIN += $$(HOME)/esp/xtensa-esp32-elf\n";
   *out << "\tINCLUDEPATH += \\\n\t\t\t$${XTENSA_TOOLCHAIN}/xtensa-esp32-elf/include \\\n";
@@ -684,7 +685,7 @@ bool MainWindow::writeProFile()
   *out << "\t\t\t$${XTENSA_TOOLCHAIN}/lib/gcc/xtensa-esp32-elf/5.2.0/include-fixed \\\n";
   *out << "\t\t\t$${XTENSA_TOOLCHAIN}/lib/gcc/xtensa-esp32-elf/include/sys \n";
   *out << "\n";
-
+#endif
   *out << "\tINCLUDEPATH += ";
   QString envKey = "PROJECT_PATH";
   QString envPath = env.value(envKey);
@@ -705,10 +706,11 @@ bool MainWindow::writeProFile()
    iter.next();
    QString envKey = iter.key();
    QString envPath = env.value(envKey);
-   foreach(QString p, iter.value()->sources().values())
+   Components* components = iter.value();
+   foreach(QString p, components->sources().values())
    {
     *out << "\\\n\t\t\t";
-    if(envKey != "" && p.startsWith(envPath))
+    if(envKey != "" && envKey != "PROJECT_PATH" && p.startsWith(envPath))
     {
      *out << "$${" << envKey << "}" << p.mid(envPath.length()) << " ";
     }
@@ -716,6 +718,7 @@ bool MainWindow::writeProFile()
      *out << dir.relativeFilePath(p) << " ";
    }
   }
+
   *out << "\n\n";
   *out << "\tHEADERS += ";
   iter = QMapIterator<QString, Components*>(componentDirs);
@@ -727,10 +730,11 @@ bool MainWindow::writeProFile()
    if(envKey == (idf_path))
     continue;
    QString envPath = env.value(envKey);
-   foreach(QString p, iter.value()->headers().values())
+   Components* components = iter.value();
+   foreach(QString p, components->headers().values())
    {
     *out << "\\\n\t\t\t";
-    if(envKey != "" && p.startsWith(envPath))
+    if(envKey != "" && envKey != "PROJECT_PATH" && p.startsWith(envPath))
     {
      *out << "$${" << envKey << "}" << p.mid(envPath.length()) << " ";
     }
@@ -744,7 +748,7 @@ bool MainWindow::writeProFile()
   QMapIterator<QString, QString> iter1 = QMapIterator<QString, QString>(otherFiles);
   //QProcessEnvironment env = QProcessEnvironment::systemEnvironment();
   while(iter1.hasNext())
-  {
+  { // other files in root directory
    iter1.next();
    QString envKey = iter1.key();
    *out << "\\\n\t\t\t";
@@ -754,18 +758,18 @@ bool MainWindow::writeProFile()
 //  *out << "\n\n";
 //  *out << "\tOTHER_FILES += ";
   iter = QMapIterator<QString, Components*>(componentDirs);
-  //QProcessEnvironment env = QProcessEnvironment::systemEnvironment();
   while(iter.hasNext())
   {
    iter.next();
-   QString envKey = iter.key();
-   if(envKey == (idf_path))
+   QString envKey = iter.key(); // type of component: IDF_PATH || PROJECT_PATH
+   if(envKey == ("IDF_PATH"))
     continue;
    QString envPath = env.value(envKey);
-   foreach(QString p, iter.value()->otherFiles().values())
+   Components* components = iter.value();
+   foreach(QString p, components->otherFiles().values())
    {
     *out << "\\\n\t\t\t";
-    if(envKey != "" && p.startsWith(envPath))
+    if(envKey != "" && envKey != "PROJECT_PATH" && p.startsWith(envPath))
     {
      *out << "$${" << envKey << "}" << p.mid(envPath.length()) << " ";
     }
@@ -773,6 +777,7 @@ bool MainWindow::writeProFile()
      *out << dir.relativeFilePath(p) << " ";
    }
   }
+
   // If there is an sdkconfig file, process it.
   process_sdkconfig(out);
 

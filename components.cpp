@@ -44,7 +44,8 @@ void Components::getFiles(QString path)
  infoList = dir.entryInfoList(QDir::AllEntries | QDir::NoDotAndDotDot | QDir::NoSymLinks);
  if(infoList.isEmpty())
   return;
- foreach (QFileInfo info, infoList) {
+ foreach (QFileInfo info, infoList)
+ {
   if(info.isDir())
   {
    getFiles(info.filePath());
@@ -61,7 +62,7 @@ void Components::getFiles(QString path)
     includeDirs.append(info.absolutePath());
    if(info.fileName().endsWith(".cpp") || info.fileName().endsWith(".c"))
    {
-    _sources.insert(info.fileName(), info.filePath());
+    _sources.insertMulti(info.fileName(), info.filePath());
     if(info.fileName() == "font_render.c")
         qDebug() << "found";
     continue;
@@ -76,7 +77,7 @@ void Components::getFiles(QString path)
    if(info.fileName() == "CMakeLists.txt" || info.fileName().toLower().startsWith("readme")
            || info.fileName() == "sdkconfig" || info.baseName() == "sdkconfig"
            || info.fileName() == "LICENSE")
-       _otherFiles.insert(info.fileName(), info.filePath());
+    _otherFiles.insertMulti(info.fileName(), info.filePath());
   }
  }
 }

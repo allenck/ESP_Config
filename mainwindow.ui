@@ -76,7 +76,7 @@
   </action>
   <action name="actionSave">
    <property name="text">
-    <string>Save</string>
+    <string>Save .pro file</string>
    </property>
   </action>
   <action name="actionExit">
