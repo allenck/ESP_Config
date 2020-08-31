@@ -367,6 +367,13 @@ bool MainWindow::onMakefile()
       }
      }
      onListComponents();
+     foreach(QString fileName, pwd_list)
+     {
+         if(fileName == "CMakeLists.txt" || fileName.toLower().startsWith("readme.")
+                 || fileName == "sdkconfig" || fileName.startsWith("sdkconfig.")
+                 || fileName == "LICENSE")
+             otherFiles.insert(fileName, pwd_dir.path());
+     }
  }
  viewHeaders();
  _dirty = true;
@@ -721,6 +728,41 @@ bool MainWindow::writeProFile()
     continue;
    QString envPath = env.value(envKey);
    foreach(QString p, iter.value()->headers().values())
+   {
+    *out << "\\\n\t\t\t";
+    if(envKey != "" && p.startsWith(envPath))
+    {
+     *out << "$${" << envKey << "}" << p.mid(envPath.length()) << " ";
+    }
+    else
+     *out << dir.relativeFilePath(p) << " ";
+   }
+  }
+
+  *out << "\n\n";
+  *out << "\tOTHER_FILES += ";
+  QMapIterator<QString, QString> iter1 = QMapIterator<QString, QString>(otherFiles);
+  //QProcessEnvironment env = QProcessEnvironment::systemEnvironment();
+  while(iter1.hasNext())
+  {
+   iter1.next();
+   QString envKey = iter1.key();
+   *out << "\\\n\t\t\t";
+   *out  << envKey << " ";
+  }
+
+//  *out << "\n\n";
+//  *out << "\tOTHER_FILES += ";
+  iter = QMapIterator<QString, Components*>(componentDirs);
+  //QProcessEnvironment env = QProcessEnvironment::systemEnvironment();
+  while(iter.hasNext())
+  {
+   iter.next();
+   QString envKey = iter.key();
+   if(envKey == (idf_path))
+    continue;
+   QString envPath = env.value(envKey);
+   foreach(QString p, iter.value()->otherFiles().values())
    {
     *out << "\\\n\t\t\t";
     if(envKey != "" && p.startsWith(envPath))
@@ -1125,6 +1167,7 @@ void MainWindow::processErrOutput()
  //qDebug() << makeProcess->readAllStandardError();  // read error channel
  ui->textEdit->append(makeProcess->readAllStandardError());
 }
+
 void MainWindow::onListComponents()
 {
  currVariable = "";

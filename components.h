@@ -13,6 +13,7 @@ public:
     Components(QString path, QObject *parent = nullptr);
     QMap<QString, QString> sources();
     QMap<QString, QString> headers();
+    QMap<QString, QString> otherFiles();
     void update(QString path);
     QStringList includeDirs;
 
@@ -24,6 +25,7 @@ private:
     QString path;
     QMap<QString, QString> _sources;
     QMap<QString, QString> _headers;
+    QMap<QString, QString> _otherFiles;
     QMap<QString, ComponentListEntry*> components;
 
     void init();

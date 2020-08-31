@@ -3,6 +3,7 @@
 #include <QFileInfo>
 #include <QProcessEnvironment>
 #include "exceptions.h"
+#include <QDebug>
 
 /* Get list of components, sources and header files */
 
@@ -59,18 +60,30 @@ void Components::getFiles(QString path)
    if(!includeDirs.contains( info.absolutePath()))
     includeDirs.append(info.absolutePath());
    if(info.fileName().endsWith(".cpp") || info.fileName().endsWith(".c"))
+   {
     _sources.insert(info.fileName(), info.filePath());
+    if(info.fileName() == "font_render.c")
+        qDebug() << "found";
+    continue;
+   }
    if(info.fileName().endsWith(".hpp") || info.fileName().endsWith(".h"))
    {
     _headers.insert(info.fileName(), info.filePath());
     if(!includeDirs.contains( info.absolutePath()))
        includeDirs.append(info.absolutePath());
+    continue;
    }
+   if(info.fileName() == "CMakeLists.txt" || info.fileName().toLower().startsWith("readme")
+           || info.fileName() == "sdkconfig" || info.baseName() == "sdkconfig"
+           || info.fileName() == "LICENSE")
+       _otherFiles.insert(info.fileName(), info.filePath());
   }
  }
 }
+
 QMap<QString, QString> Components::sources() {return _sources;}
 QMap<QString, QString> Components::headers() {return _headers;}
+QMap<QString, QString> Components::otherFiles() {return _otherFiles;}
 
 void Components::update(QString path)
 {

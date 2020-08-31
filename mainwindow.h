@@ -51,6 +51,7 @@ private:
     QString componentDir;
     QMap<QString, QString> sources;
     QMap<QString, QString> headers;
+    QMap<QString, QString> otherFiles;
     QList<QString> includePaths;
     QStringList toolChainPaths;
     QString toolChainPath;
