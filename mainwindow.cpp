@@ -28,6 +28,8 @@ MainWindow::MainWindow(QWidget *parent) :
     ui(new Ui::MainWindow)
 {
     ui->setupUi(this);
+    ui->optionWidget->hide();
+
     componentDirs = QMap<QString, Components*>();
     dir_ignore.insert("build", true);
     dir_ignore.insert("CMakeFiles", true);
@@ -58,6 +60,7 @@ MainWindow::MainWindow(QWidget *parent) :
     connect(ui->menuFile, SIGNAL(aboutToShow()), this, SLOT(onFileMenuAboutToShow()));
     connect(ui->menuTools, SIGNAL(aboutToShow()), this, SLOT(onToolsMenuAboutToShow()));
     connect(ui->actionAdd_directory_to_ignore, SIGNAL(triggered(bool)), this, SLOT(onAddDirToIgnore()));
+    connect(ui->actionSave_sdkconfig_changes, SIGNAL(triggered(bool)), this, SLOT(onSaveSdkconfig()));
 
     env = QProcessEnvironment::systemEnvironment();
     toolChainPath = env.value("Home", "")+ QDir::separator() +"esp/xtensa-esp32-elf" +QDir::separator();
@@ -80,6 +83,7 @@ void MainWindow::onFileMenuAboutToShow()
 {
  ui->actionSave->setEnabled(pwd != nullptr);
  ui->actionCreate_User_file->setEnabled(pwd != nullptr);
+ ui->actionSave_sdkconfig_changes->setEnabled(sdkconfig->count()> 0);
 }
 
 void MainWindow::onToolsMenuAboutToShow()
@@ -1313,4 +1317,105 @@ void MainWindow::onAddDirToIgnore()
       if(!dir_ignore.contains(dir))
           dir_ignore.insert(dir, true);
   }
+}
+
+void MainWindow::onSaveSdkconfig()
+{
+    // Make a copy so we can find additions
+    QMap<QString, QString> workMap = QMap<QString, QString>(*sdkconfig);
+    QTemporaryFile file("sdkconfig");
+    QStringList sl;
+    if(file.open())
+    {
+        QTextStream out(&file);
+        foreach (QString line, optionList) {
+            if(line.isEmpty() || (line.startsWith("#") && !line.contains("is not set")))
+            {
+                out << line << "\n";
+                continue;
+            }
+            if(line.startsWith("#") )
+            {
+                // option is currently not used
+                sl = line.split(" ");
+                if(workMap.contains(sl.at(1)))
+                {
+                    if(workMap.value(sl.at(1)).trimmed().isEmpty())
+                    {
+                        // nothing changed!
+                        out << line << "\n";
+                        workMap.remove(sl.at(1));
+                        continue;
+                    }
+                    // option now is set.
+                    out << sl.at(1) << "=" << workMap.value(sl.at(1)) << "\n";
+                    workMap.remove(sl.at(1));
+                    continue;
+                }
+            }
+            sl = line.split("=");
+            if(workMap.contains(sl.at(0)))
+            {
+                if(!workMap.value(sl.at(0)).trimmed().isEmpty())
+                {
+                    // option now is set.
+                    out << sl.at(0) << "=" << workMap.value(sl.at(0)) << "\n";
+                    workMap.remove(sl.at(0));
+                    continue;
+
+                }
+                else
+                {
+                    // option now is not set.
+                    out << "# " << sl.at(0) << " is not set\n";
+                    workMap.remove(sl.at(0));
+                    continue;
+                }
+            }
+            // Option is now not set
+            out << "# "<< sl.at(0) << " is not set\n";
+            workMap.remove(sl.at(0));
+            continue;
+        }
+        if(workMap.count())
+        {
+            // some options left over; must have been added
+            QMapIterator<QString, QString> iter(workMap);
+            out << "\n#\tAdded options\n\n";
+            while(iter.hasNext())
+            {
+                iter.next();
+                if(iter.value().isEmpty())
+                    out << "# "<< iter.key() << " is not set\n";
+                else
+                    out << iter.key() << "=" << iter.value();
+            }
+        }
+
+        file.close();
+        QFile old(pwd + QDir::separator() + "sdkconfig");
+        if(old.exists())
+        {
+            QFile back(pwd + QDir::separator() + "sdkconfig~");
+            if(back.exists())
+            {
+                if(!back.remove())
+                {
+                    QMessageBox::critical(this, tr("Error"), tr("unable to remove %1").arg(back.fileName()));
+                    return;
+                }
+            }
+            if(!old.rename(pwd + QDir::separator() + "sdkconfig~"))
+            {
+                QMessageBox::critical(this, tr("Error"), tr("unable to replace %1").arg(pwd + QDir::separator() + "sdkconfig"));
+                return;
+            }
+        }
+        if(!file.copy(pwd + QDir::separator() + "sdkconfig"))
+        {
+            QMessageBox::critical(this, tr("Error"), tr("unable to replace %1 with new file").arg(pwd + QDir::separator() + "sdkconfig"));
+            return;
+
+        }
+    }
 }

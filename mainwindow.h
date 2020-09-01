@@ -42,6 +42,7 @@ public slots:
     void onAddPath();
     void onListComponents();
     void onAddDirToIgnore();
+    void onSaveSdkconfig();
 
 private:
     Ui::MainWindow *ui;

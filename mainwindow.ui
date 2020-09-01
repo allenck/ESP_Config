@@ -55,6 +55,7 @@
     <addaction name="actionMakefile"/>
     <addaction name="actionSave"/>
     <addaction name="actionCreate_User_file"/>
+    <addaction name="actionSave_sdkconfig_changes"/>
     <addaction name="actionExit"/>
    </widget>
    <widget class="QMenu" name="menuView">
@@ -185,6 +186,11 @@
   <action name="actionOptions">
    <property name="text">
     <string>Options</string>
+   </property>
+  </action>
+  <action name="actionSave_sdkconfig_changes">
+   <property name="text">
+    <string>Save sdkconfig changes</string>
    </property>
   </action>
  </widget>
