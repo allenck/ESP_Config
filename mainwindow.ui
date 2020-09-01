@@ -6,8 +6,8 @@
    <rect>
     <x>0</x>
     <y>0</y>
-    <width>400</width>
-    <height>300</height>
+    <width>755</width>
+    <height>608</height>
    </rect>
   </property>
   <property name="windowTitle">
@@ -21,6 +21,22 @@
     <item>
      <widget class="QTableView" name="tv1"/>
     </item>
+    <item>
+     <widget class="OptionWidget" name="optionWidget" native="true">
+      <property name="sizePolicy">
+       <sizepolicy hsizetype="Preferred" vsizetype="Expanding">
+        <horstretch>0</horstretch>
+        <verstretch>0</verstretch>
+       </sizepolicy>
+      </property>
+      <property name="minimumSize">
+       <size>
+        <width>0</width>
+        <height>100</height>
+       </size>
+      </property>
+     </widget>
+    </item>
    </layout>
   </widget>
   <widget class="QMenuBar" name="menuBar">
@@ -28,7 +44,7 @@
     <rect>
      <x>0</x>
      <y>0</y>
-     <width>400</width>
+     <width>755</width>
      <height>22</height>
     </rect>
    </property>
@@ -47,14 +63,24 @@
     </property>
     <addaction name="actionHeaders"/>
     <addaction name="actionSources"/>
+    <addaction name="actionOptions"/>
    </widget>
    <widget class="QMenu" name="menuTools">
     <property name="title">
      <string>Tools</string>
     </property>
+    <widget class="QMenu" name="menuDirectories_to_ignore">
+     <property name="title">
+      <string>Directories to ignore...</string>
+     </property>
+     <addaction name="actionbuild"/>
+     <addaction name="actionCMakeFiles"/>
+    </widget>
     <addaction name="actionAdd_define"/>
     <addaction name="actionAdd_path_to_components_or_SDK"/>
     <addaction name="actionList_components"/>
+    <addaction name="menuDirectories_to_ignore"/>
+    <addaction name="actionAdd_directory_to_ignore"/>
    </widget>
    <addaction name="menuFile"/>
    <addaction name="menuView"/>
@@ -124,8 +150,53 @@
     <string>List components</string>
    </property>
   </action>
+  <action name="actionDirectories_to_ignore">
+   <property name="text">
+    <string>Directories to ignore</string>
+   </property>
+  </action>
+  <action name="actionbuild">
+   <property name="checkable">
+    <bool>true</bool>
+   </property>
+   <property name="checked">
+    <bool>true</bool>
+   </property>
+   <property name="text">
+    <string>build</string>
+   </property>
+  </action>
+  <action name="actionCMakeFiles">
+   <property name="checkable">
+    <bool>true</bool>
+   </property>
+   <property name="checked">
+    <bool>true</bool>
+   </property>
+   <property name="text">
+    <string>CMakeFiles</string>
+   </property>
+  </action>
+  <action name="actionAdd_directory_to_ignore">
+   <property name="text">
+    <string>Add directory to ignore</string>
+   </property>
+  </action>
+  <action name="actionOptions">
+   <property name="text">
+    <string>Options</string>
+   </property>
+  </action>
  </widget>
  <layoutdefault spacing="6" margin="11"/>
+ <customwidgets>
+  <customwidget>
+   <class>OptionWidget</class>
+   <extends>QWidget</extends>
+   <header>optionwidget.h</header>
+   <container>1</container>
+  </customwidget>
+ </customwidgets>
  <resources/>
  <connections/>
 </ui>

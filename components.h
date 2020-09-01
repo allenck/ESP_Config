@@ -10,7 +10,7 @@ class Components : public QObject
     Q_OBJECT
 public:
     explicit Components(QObject *parent = nullptr);
-    Components(QString path, QObject *parent = nullptr);
+    Components(QString path, QMap<QString, bool> dir_ignore = QMap<QString, bool>(), QObject *parent = nullptr);
     QMap<QString, QString> sources();
     QMap<QString, QString> headers();
     QMap<QString, QString> otherFiles();
@@ -27,7 +27,7 @@ private:
     QMap<QString, QString> _headers;
     QMap<QString, QString> _otherFiles;
     QMap<QString, ComponentListEntry*> components;
-
+    QMap<QString, bool> dir_ignore;
     void init();
     void getFiles(QString path);
 };

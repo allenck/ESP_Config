@@ -7,11 +7,14 @@
 #include <QTextStream>
 #include "exceptions.h"
 #include <QStack>
+#include <QActionGroup>
+#include <QHash>
 
 namespace Ui {
 class MainWindow;
 }
 
+class Options;
 class QPushButton;
 class QLineEdit;
 class Components;
@@ -32,11 +35,13 @@ public slots:
     bool writeProFile();
     void viewHeaders();
     void viewSources();
+    void viewOptions();
     void createUserFile();
     void onExit();
     void onAddDefine();
     void onAddPath();
     void onListComponents();
+    void onAddDirToIgnore();
 
 private:
     Ui::MainWindow *ui;
@@ -44,7 +49,7 @@ private:
     //Components* projComponents = nullptr;
     //Components* components = nullptr;
     QMap<QString, Components*> componentDirs;
-
+    QMap<QString, bool> dir_ignore;
     QString target;
     QString pwd;
     QString name;
@@ -63,7 +68,9 @@ private:
     bool evaluateIf(QString);
     QString evaluateDef(QString);
     void bypass(QTextStream* stream);
-
+    QActionGroup* dirIgnoreActGrp = nullptr;
+    QMap<QString, QString>* sdkconfig = new QMap<QString, QString>();
+    QList<QString> optionList;
     void closeEvent(QCloseEvent *event);
     bool checkDirty();
     bool checkUserFile();
@@ -75,7 +82,8 @@ private:
     QProcess* makeProcess;
     QString currVariable;
     bool pathHasSources(QString);
-    void process_sdkconfig(QTextStream *out);
+    void procesSdkconfig();
+    void outputOptions(QTextStream* out);
 
 private slots:
     void onDialogOk();
@@ -87,7 +95,7 @@ private slots:
     void onToolsMenuAboutToShow();
     void processStdOutput();
     void processErrOutput();
-
+    void on_dirIgnoreAction(QAction*);
 
 protected:
     void createDialog(QString label, QProcessEnvironment env);

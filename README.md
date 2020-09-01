@@ -13,6 +13,11 @@ All you need to do is to download this project and compile it. I have developed 
 4. Before opening the project in QtCreator, you also need to create a /pro.user file with menu entry File -> Create user file. 
 5. Open the .pro file created in QtCreator. 
 
+# Using CMake
+Since esp-idf now uses CMake it is possible to open a project in Qt Creator by specifing the CMakeLists.txt file instead of a .pro file. However, this does not work satisfactorily. Some problems I have encountered are:
+1. Qt Creator can't locate some esp-idf component header files so they are highlighted as "not found".
+2. When adding files to the project, CMakeLists.txt must be updated and CMake rerun. git will not be updated.
+
 # Setting up Build Options
 In order to be able to build the program in Qt Creator, some changes need to be made to the project's Build settings.
 From the left sidebar select *Projects* then *Build. 
@@ -22,6 +27,7 @@ From the left sidebar select *Projects* then *Build.
 	a. Remove any reference to the QT path.
 	b. Add the location of the C++ compiler, in my case, it is "/home/allen/.espressif/tools/xtensa-esp32-elf/esp-2020r2-8.2.0/xtensa-esp32-elf/bin"
 3. If the first builds step is "qmake ...", delete it. Is should then look like the image, above. You nay optionally set "Make arguments" to "flash" if desired. 
+4. You can add or delete files but must add or delete them also in your CMakeLists.txt file.
 
 Now you should be able to select "build: from the menu and compile (an optionally flas) the project. 
 

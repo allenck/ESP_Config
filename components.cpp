@@ -15,9 +15,10 @@ Components::Components(QObject *parent) : QObject(parent)
   init();
 }
 
-Components::Components(QString path, QObject *parent) : QObject(parent)
+Components::Components(QString path, QMap<QString, bool> dir_ignore, QObject *parent) : QObject(parent)
 {
  this->path = path;
+ this->dir_ignore = dir_ignore;
  init();
 }
 
@@ -31,6 +32,8 @@ void Components::init()
   foreach(QFileInfo info, comps)
   {
    ComponentListEntry* entry = new ComponentListEntry(info.baseName(), info.filePath());
+   if(info.isDir() && dir_ignore.contains(info.baseName()) && dir_ignore.value(info.baseName()))
+           continue;
    components.insert(info.baseName(), entry);
    getFiles(info.filePath());
   }

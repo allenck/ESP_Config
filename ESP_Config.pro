@@ -27,13 +27,19 @@ SOURCES += \
         main.cpp \
         mainwindow.cpp \
     components.cpp \
-    tablemodel.cpp
+    tablemodel.cpp \
+    sdkconfigdatamodel.cpp \
+    options.cpp \
+    optionwidget.cpp
 
 HEADERS += \
         mainwindow.h \
     components.h \
     tablemodel.h \
-    exceptions.h
+    exceptions.h \
+    sdkconfigdatamodel.h \
+    options.h \
+    optionwidget.h
 
 FORMS += \
         mainwindow.ui

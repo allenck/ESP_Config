@@ -18,6 +18,10 @@
 #include <QStringList>
 #include <QString>
 #include <QProcess>
+#include <QInputDialog>
+#include "sdkconfigdatamodel.h"
+#include "options.h"
+#include "optionwidget.h"
 
 MainWindow::MainWindow(QWidget *parent) :
     QMainWindow(parent),
@@ -25,7 +29,14 @@ MainWindow::MainWindow(QWidget *parent) :
 {
     ui->setupUi(this);
     componentDirs = QMap<QString, Components*>();
-
+    dir_ignore.insert("build", true);
+    dir_ignore.insert("CMakeFiles", true);
+    dirIgnoreActGrp = new QActionGroup(this);
+    dirIgnoreActGrp->addAction(ui->actionbuild);
+    ui->actionbuild->setChecked(true);
+    dirIgnoreActGrp->addAction(ui->actionCMakeFiles);
+    ui->actionCMakeFiles->setCheckable(true);
+    connect(dirIgnoreActGrp, SIGNAL(triggered(QAction*)), this, SLOT(on_dirIgnoreAction(QAction*)));
 
     ui->actionMakefile->setToolTip(tr("Specify the project's Makefile or CMakeLists.txt location"));
     connect(ui->actionMakefile, SIGNAL(triggered(bool)), this, SLOT(onMakefile()));
@@ -35,6 +46,8 @@ MainWindow::MainWindow(QWidget *parent) :
     connect(ui->actionHeaders, SIGNAL(triggered(bool)), this, SLOT(viewHeaders()));
     ui->actionSources->setToolTip("View source files");
     connect(ui->actionSources, SIGNAL(triggered(bool)), this, SLOT(viewSources()));
+    ui->actionOptions->setToolTip(tr("Edit program options"));
+    connect(ui->actionOptions, SIGNAL(triggered(bool)), this, SLOT(viewOptions()));
     ui->actionCreate_User_file->setToolTip("Create user file");
     connect(ui->actionCreate_User_file, SIGNAL(triggered(bool)), this, SLOT(createUserFile()));
     connect(ui->actionExit, SIGNAL(triggered(bool)), this, SLOT(onExit()));
@@ -44,7 +57,7 @@ MainWindow::MainWindow(QWidget *parent) :
     ui->textEdit->setHidden(true);
     connect(ui->menuFile, SIGNAL(aboutToShow()), this, SLOT(onFileMenuAboutToShow()));
     connect(ui->menuTools, SIGNAL(aboutToShow()), this, SLOT(onToolsMenuAboutToShow()));
-
+    connect(ui->actionAdd_directory_to_ignore, SIGNAL(triggered(bool)), this, SLOT(onAddDirToIgnore()));
 
     env = QProcessEnvironment::systemEnvironment();
     toolChainPath = env.value("Home", "")+ QDir::separator() +"esp/xtensa-esp32-elf" +QDir::separator();
@@ -72,6 +85,7 @@ void MainWindow::onFileMenuAboutToShow()
 void MainWindow::onToolsMenuAboutToShow()
 {
  ui->actionList_components->setEnabled(pwd != nullptr);
+ //actionDirectories_to_ignore
 }
 
 bool MainWindow::parseMakefile(QTextStream* stream, QString path, QString fn)
@@ -188,7 +202,7 @@ bool MainWindow::parseMakefile(QTextStream* stream, QString path, QString fn)
     {
      if(sl.at(1)== ".")
      {
-      componentDirs.insertMulti("", new Components(path));
+      componentDirs.insertMulti("", new Components(path, dir_ignore));
      }
     }
    }
@@ -204,7 +218,7 @@ bool MainWindow::parseMakefile(QTextStream* stream, QString path, QString fn)
     if(!str.endsWith("\\"))
     {
      path = expandLine(str);
-     componentDirs.insertMulti("", new Components(path));
+     componentDirs.insertMulti("", new Components(path, dir_ignore));
     }
    }
   }
@@ -233,7 +247,7 @@ bool MainWindow::parseMakefile(QTextStream* stream, QString path, QString fn)
   if(info.fileName().endsWith(".h") || info.fileName().endsWith(".hpp") )
   {
    if(!includePaths.contains(info.absolutePath()))
-     componentDirs.insert("", new Components(info.absolutePath()));
+     componentDirs.insert("", new Components(info.absolutePath(), dir_ignore));
   }
   parseSourceFile(info.absoluteFilePath());
  }
@@ -336,7 +350,7 @@ bool MainWindow::onMakefile()
       QFileInfo info(fileNames.at(0));
       pwd = info.absolutePath();
       env.insert("PROJECT_PATH", pwd);
-      componentDirs.insert("PROJECT_PATH", new Components(info.path()));
+      componentDirs.insert("PROJECT_PATH", new Components(info.path(), dir_ignore));
 
       QDir pwdDir(pwd); // pwd is Makefile's directory
       target= pwdDir.dirName();  // target will be project' dir name
@@ -375,7 +389,8 @@ bool MainWindow::onMakefile()
              otherFiles.insert(fileName, pwd_dir.path());
      }
  }
- viewHeaders();
+ procesSdkconfig();
+ viewOptions();
  _dirty = true;
  return true;
 }
@@ -625,166 +640,197 @@ bool MainWindow::writeProFile()
 #endif
 bool MainWindow::writeProFile()
 {
-
- QString filename = pwd + QDir::separator()+ target + ".pro";
- qDebug() << "write pro file: " << filename;
- QFile file(filename);
- if(file.open(QFile::WriteOnly | QFile::Truncate))
- {
-  QTextStream* out = new QTextStream(&file);
-  *out << "\tTARGET = " << target << "\n";
-  *out << "\n\n";
-
-  QStringList keys = componentDirs.keys();
-  //QProcessEnvironment env = QProcessEnvironment::systemEnvironment();
-  foreach (QString str, keys) {
-   if(str != "")
-   {
-    QString ePath =  env.value(str);
-    QString home = QDir::homePath();
-    if(ePath.startsWith(home))
-     ePath = ePath.replace(home, "$(HOME)");
-    *out << "\t" << str << " = " << ePath << "\n\n";
-   }
-  }
-
-
-  *out << "\tINCLUDEPATH += ";
-
-  QDir dir(pwd);
-  QMapIterator<QString, Components*> iter(componentDirs);
-  while(iter.hasNext())
-  {
-   iter.next();
-   if(iter.key() == "" || iter.key() == "PROJECT_PATH")
-    continue;
-   QString envKey = iter.key();
-   QString envPath = env.value(envKey);
-
-   foreach (QString p, iter.value()->includeDirs)
-   {
-    if(pathHasSources(p))
+    QString filename = pwd + QDir::separator()+ target + ".pro";
+    qDebug() << "write pro file: " << filename;
+    QString esp_pri_fn = pwd + QDir::separator()+ "esp.pri";
+    QFile esp_pri(esp_pri_fn);
+    if(!esp_pri.open(QFile::WriteOnly | QFile::Truncate))
     {
-     *out << "\\\n\t\t\t";
-     if( p.startsWith(envPath))
-     {
-      *out << "$${" << envKey << "}" << p.mid(envPath.length()) << " ";
-     }
-     else
-      *out << dir.relativeFilePath(p) << " ";
+     qDebug() << "error writing pri file: " << esp_pri_fn;
+     return false;
     }
-   }
-  }
-#if 0
-  *out << "\n\n";
-  *out << "\tXTENSA_TOOLCHAIN += $$(HOME)/esp/xtensa-esp32-elf\n";
-  *out << "\tINCLUDEPATH += \\\n\t\t\t$${XTENSA_TOOLCHAIN}/xtensa-esp32-elf/include \\\n";
-  *out << "\t\t\t$${XTENSA_TOOLCHAIN}/xtensa-esp32-elf/include/c++/5.2.0 \\\n";
-  *out << "\t\t\t$${XTENSA_TOOLCHAIN}/xtensa-esp32-elf/include/c++/5.2.0/xtensa-esp32-elf \\\n";
-  *out << "\t\t\t$${XTENSA_TOOLCHAIN}/lib/gcc/xtensa-esp32-elf/5.2.0/include \\\n";
-  *out << "\t\t\t$${XTENSA_TOOLCHAIN}/lib/gcc/xtensa-esp32-elf/5.2.0/include-fixed \\\n";
-  *out << "\t\t\t$${XTENSA_TOOLCHAIN}/lib/gcc/xtensa-esp32-elf/include/sys \n";
-  *out << "\n";
-#endif
-  *out << "\tINCLUDEPATH += ";
-  QString envKey = "PROJECT_PATH";
-  QString envPath = env.value(envKey);
-  foreach(QString p, componentDirs.value(envKey)->includeDirs)
-  {
-   if(pathHasSources(p))
-   {
-    *out << "\\\n\t\t\t";
-    *out << dir.relativeFilePath(p) << " ";
-   }
-  }
-  *out << "\n\n";
-  *out << "\tSOURCES += ";
-  iter = QMapIterator<QString, Components*>(componentDirs);
-  //QProcessEnvironment env = QProcessEnvironment::systemEnvironment();
-  while(iter.hasNext())
-  {
-   iter.next();
-   QString envKey = iter.key();
-   QString envPath = env.value(envKey);
-   Components* components = iter.value();
-   foreach(QString p, components->sources().values())
-   {
-    *out << "\\\n\t\t\t";
-    if(envKey != "" && envKey != "PROJECT_PATH" && p.startsWith(envPath))
+    QTextStream* opri = new QTextStream(&esp_pri);
+    *opri << "#\n";
+    *opri << "#\tESP-IDF include paths, headers and sources.\n";
+    *opri << "#\n";
+
+    QFile file(filename);
+    if(file.open(QFile::WriteOnly | QFile::Truncate))
     {
-     *out << "$${" << envKey << "}" << p.mid(envPath.length()) << " ";
+        QTextStream* out = new QTextStream(&file);
+        *out << "\tTARGET = " << target << "\n";
+        *out << "\n\n";
+
+
+        QStringList keys = componentDirs.keys();
+        //QProcessEnvironment env = QProcessEnvironment::systemEnvironment();
+        foreach (QString str, keys)
+        {
+            if(str != "")
+            {
+                QString ePath =  env.value(str);
+                QString home = QDir::homePath();
+                if(ePath.startsWith(home))
+                 ePath = ePath.replace(home, "$(HOME)");
+                *out << "\t" << str << " = " << ePath << "\n\n";
+            }
+        }
+
+        *out  << "\n\tinclude(esp.pri)\n\n";
+
+        *out << "\tINCLUDEPATH += ";
+        *opri << "\tINCLUDEPATH += ";
+        QDir dir(pwd);
+        QMapIterator<QString, Components*> iter(componentDirs);
+        while(iter.hasNext())
+        {
+            iter.next();
+            if(iter.key() == "" || iter.key() == "PROJECT_PATH")
+            continue;
+            QString envKey = iter.key();
+            QString envPath = env.value(envKey);
+
+            foreach (QString p, iter.value()->includeDirs)
+            {
+                if(pathHasSources(p))
+                {
+                     if( p.startsWith(envPath))
+                     {
+                        *opri << "\\\n\t\t\t";
+                        *opri << "$${" << envKey << "}" << p.mid(envPath.length()) << " ";
+                     }
+                     else
+                     {
+                         *out << "\\\n\t\t\t";
+                         *out << dir.relativeFilePath(p) << " ";
+                     }
+                }
+            }
+        }
+        #if 0
+        *out << "\n\n";
+        *out << "\tXTENSA_TOOLCHAIN += $$(HOME)/esp/xtensa-esp32-elf\n";
+        *out << "\tINCLUDEPATH += \\\n\t\t\t$${XTENSA_TOOLCHAIN}/xtensa-esp32-elf/include \\\n";
+        *out << "\t\t\t$${XTENSA_TOOLCHAIN}/xtensa-esp32-elf/include/c++/5.2.0 \\\n";
+        *out << "\t\t\t$${XTENSA_TOOLCHAIN}/xtensa-esp32-elf/include/c++/5.2.0/xtensa-esp32-elf \\\n";
+        *out << "\t\t\t$${XTENSA_TOOLCHAIN}/lib/gcc/xtensa-esp32-elf/5.2.0/include \\\n";
+        *out << "\t\t\t$${XTENSA_TOOLCHAIN}/lib/gcc/xtensa-esp32-elf/5.2.0/include-fixed \\\n";
+        *out << "\t\t\t$${XTENSA_TOOLCHAIN}/lib/gcc/xtensa-esp32-elf/include/sys \n";
+        *out << "\n";
+        #endif
+        //*out << "\tINCLUDEPATH += ";
+        QString envKey = "PROJECT_PATH";
+        QString envPath = env.value(envKey);
+        foreach(QString p, componentDirs.value(envKey)->includeDirs)
+        {
+            if(pathHasSources(p))
+            {
+                *out << "\\\n\t\t\t";
+                *out << dir.relativeFilePath(p) << " ";
+            }
+        }
+        *out << "\n\n";
+        *out << "\tSOURCES += ";
+        *opri << "\n\n";
+        *opri << "\tSOURCES += ";
+        iter = QMapIterator<QString, Components*>(componentDirs);
+        //QProcessEnvironment env = QProcessEnvironment::systemEnvironment();
+        while(iter.hasNext())
+        {
+            iter.next();
+            QString envKey = iter.key();
+            QString envPath = env.value(envKey);
+            Components* components = iter.value();
+            foreach(QString p, components->sources().values())
+            {
+                if(envKey != "" && envKey != "PROJECT_PATH" && p.startsWith(envPath))
+                {
+                    *opri << "\\\n\t\t\t";
+                    *opri << "$${" << envKey << "}" << p.mid(envPath.length()) << " ";
+                }
+                else
+                {
+                    *out << "\\\n\t\t\t";
+                    *out << dir.relativeFilePath(p) << " ";
+                }
+            }
+        }
+
+        *out << "\n\n";
+        *out << "\tHEADERS += ";
+        *opri << "\n\n";
+        *opri << "\tHEADERS += ";
+        iter = QMapIterator<QString, Components*>(componentDirs);
+        //QProcessEnvironment env = QProcessEnvironment::systemEnvironment();
+        while(iter.hasNext())
+        {
+            iter.next();
+            QString envKey = iter.key();
+            if(envKey == (idf_path))
+            continue;
+            QString envPath = env.value(envKey);
+            Components* components = iter.value();
+            foreach(QString p, components->headers().values())
+            {
+                if(envKey != "" && envKey != "PROJECT_PATH" && p.startsWith(envPath))
+                {
+                    *opri << "\\\n\t\t\t";
+                    *opri << "$${" << envKey << "}" << p.mid(envPath.length()) << " ";
+                }
+                else
+                {
+                    *out << "\\\n\t\t\t";
+                    *out << dir.relativeFilePath(p) << " ";
+                }
+            }
+        }
+
+        *out << "\n\n";
+        *out << "\tOTHER_FILES += ";
+        QMapIterator<QString, QString> iter1 = QMapIterator<QString, QString>(otherFiles);
+        //QProcessEnvironment env = QProcessEnvironment::systemEnvironment();
+        while(iter1.hasNext())
+        { // other files in root directory
+            iter1.next();
+            QString envKey = iter1.key();
+            *out << "\\\n\t\t\t";
+            *out  << envKey << " ";
+        }
+
+        //  *out << "\n\n";
+        //  *out << "\tOTHER_FILES += ";
+        iter = QMapIterator<QString, Components*>(componentDirs);
+        while(iter.hasNext())
+        {
+            iter.next();
+            QString envKey = iter.key(); // type of component: IDF_PATH || PROJECT_PATH
+            if(envKey == ("IDF_PATH"))
+            continue;
+            QString envPath = env.value(envKey);
+            Components* components = iter.value();
+            foreach(QString p, components->otherFiles().values())
+            {
+
+            if(envKey != "" && envKey != "PROJECT_PATH" && p.startsWith(envPath))
+            {
+                *opri << "\\\n\t\t\t";
+                *opri << "$${" << envKey << "}" << p.mid(envPath.length()) << " ";
+            }
+            else
+            {
+                *out << "\\\n\t\t\t";
+                *out << dir.relativeFilePath(p) << " ";
+            }
+        }
+
+        // If there is an sdkconfig file, process it.
+        outputOptions(out);
     }
-    else
-     *out << dir.relativeFilePath(p) << " ";
-   }
-  }
-
-  *out << "\n\n";
-  *out << "\tHEADERS += ";
-  iter = QMapIterator<QString, Components*>(componentDirs);
-  //QProcessEnvironment env = QProcessEnvironment::systemEnvironment();
-  while(iter.hasNext())
-  {
-   iter.next();
-   QString envKey = iter.key();
-   if(envKey == (idf_path))
-    continue;
-   QString envPath = env.value(envKey);
-   Components* components = iter.value();
-   foreach(QString p, components->headers().values())
-   {
-    *out << "\\\n\t\t\t";
-    if(envKey != "" && envKey != "PROJECT_PATH" && p.startsWith(envPath))
-    {
-     *out << "$${" << envKey << "}" << p.mid(envPath.length()) << " ";
+    file.close();
+    esp_pri.close();
+    _dirty = false;
     }
-    else
-     *out << dir.relativeFilePath(p) << " ";
-   }
-  }
-
-  *out << "\n\n";
-  *out << "\tOTHER_FILES += ";
-  QMapIterator<QString, QString> iter1 = QMapIterator<QString, QString>(otherFiles);
-  //QProcessEnvironment env = QProcessEnvironment::systemEnvironment();
-  while(iter1.hasNext())
-  { // other files in root directory
-   iter1.next();
-   QString envKey = iter1.key();
-   *out << "\\\n\t\t\t";
-   *out  << envKey << " ";
-  }
-
-//  *out << "\n\n";
-//  *out << "\tOTHER_FILES += ";
-  iter = QMapIterator<QString, Components*>(componentDirs);
-  while(iter.hasNext())
-  {
-   iter.next();
-   QString envKey = iter.key(); // type of component: IDF_PATH || PROJECT_PATH
-   if(envKey == ("IDF_PATH"))
-    continue;
-   QString envPath = env.value(envKey);
-   Components* components = iter.value();
-   foreach(QString p, components->otherFiles().values())
-   {
-    *out << "\\\n\t\t\t";
-    if(envKey != "" && envKey != "PROJECT_PATH" && p.startsWith(envPath))
-    {
-     *out << "$${" << envKey << "}" << p.mid(envPath.length()) << " ";
-    }
-    else
-     *out << dir.relativeFilePath(p) << " ";
-   }
-  }
-
-  // If there is an sdkconfig file, process it.
-  process_sdkconfig(out);
-
-  file.close();
-  _dirty = false;
- }
- return true;
+    return true;
 }
 
 void MainWindow::viewHeaders()
@@ -798,23 +844,38 @@ void MainWindow::viewHeaders()
    ComponentListEntry* entry = new ComponentListEntry(s, componentDirs.value("PROJECT_PATH")->headers().value(s), false);
    cList->append(entry);
   }
+  ui->optionWidget->hide();
   ui->tv1->setModel(new TableModel(cList));
   ui->tv1->resizeColumnsToContents();
-
+  ui->tv1->show();
  }
 }
 
 void MainWindow::viewSources()
 {
- QList<ComponentListEntry*>* cList = new QList<ComponentListEntry*>();
- foreach (QString s, componentDirs.value("PROJECT_PATH")->sources().keys()) {
-  cList->append(new ComponentListEntry(s, componentDirs.value("")->sources().value(s), false));
- }
- ui->tv1->setModel(new TableModel(cList));
- ui->tv1->resizeColumnsToContents();
-
+    QList<ComponentListEntry*>* cList = new QList<ComponentListEntry*>();
+    if(componentDirs.contains("PROJECT_PATH"))
+    {
+     foreach (QString s, componentDirs.value("PROJECT_PATH")->sources().keys())
+     {
+      ComponentListEntry* entry = new ComponentListEntry(s, componentDirs.value("PROJECT_PATH")->sources().value(s), false);
+      cList->append(entry);
+     }
+     ui->optionWidget->hide();
+     ui->tv1->setModel(new TableModel(cList));
+     ui->tv1->resizeColumnsToContents();
+     ui->tv1->show();
+    }
 }
 
+void MainWindow::viewOptions()
+{
+//    ui->tv1->setModel(new SdkConfigDataModel(sdkconfig));
+//    ui->tv1->resizeColumnsToContents();
+    ui->tv1->hide();
+    ui->optionWidget->init(optionList, sdkconfig);
+    ui->optionWidget->show();
+}
 bool MainWindow::writeUserFile(QString fileName)
 {
  qDebug() << "write user file: " << fileName;
@@ -943,33 +1004,12 @@ void MainWindow::processInclude(QString iPath)
 {
  QString key;
  QString path = expandLine(iPath);
-#if 0
- // need to also decode .mk file
- QFileInfo info( path);
- QString fn;
- if(QFileInfo(info.path()).exists() && info.fileName().endsWith(".mk"))
- {
-  fn = info.absoluteFilePath();
-  qDebug() << "process " << fn;
-  QFile file(fn);
-  if(file.open(QIODevice::ReadOnly))
-  {
-   QTextStream stream(&file);
-   parseMakefile(&stream, info.absolutePath(), fn);
-  }
-  else
-  {
-   throw BadPath(tr("not found: %1").arg(fn));
-  }
- }
-#else
+
  QFileInfo info(path);
  if(info.isDir())
   componentDirs.insertMulti("", new Components(path));
  else
   componentDirs.insertMulti("", new Components(info.absolutePath()));
-#endif
-
 }
 
 void MainWindow::onAddPath()
@@ -1205,32 +1245,72 @@ bool MainWindow::pathHasSources(QString path)
  return !(list.count() == 0);
 }
 
-void MainWindow::process_sdkconfig(QTextStream* out)
+void MainWindow::procesSdkconfig()
 {
     bool bFirst = false;
-    QFile sdkconfig(pwd + QDir::separator() + "sdkconfig");
-    if(sdkconfig.exists())
+    sdkconfig->clear();
+    QFile f(pwd + QDir::separator() + "sdkconfig");
+    if(f.exists())
     {
-        if(sdkconfig.open(QIODevice::ReadOnly | QIODevice::Text))
+        if(f.open(QIODevice::ReadOnly | QIODevice::Text))
         {
-           while(!sdkconfig.atEnd())
+           while(!f.atEnd())
            {
-               QString line = sdkconfig.readLine().trimmed();
+               QString line = f.readLine().trimmed();
+               optionList.append(line);
                if(line.startsWith("#") || line.isEmpty())
+               {
+                   QStringList sl = line.split(" ");
+                   if(sl.count()> 3 && sl.at(2) == "is")
+                       sdkconfig->insert(sl.at(1), QString());
                    continue;
-               if(!bFirst)
-               {
-                   *out << "\n\n\tDEFINES+=\t" << line << "\n";
-                   bFirst= true;
                }
-               else
-               {
-                   *out << "\t\t\t" << line<< " \\\n";
-               }
+
+               QStringList sl = line.split("=");
+               if(sl.count() >1)
+                   sdkconfig->insert(sl.at(0), sl.at(1));
            }
-           if(bFirst)
-               *out << "\n";
-           sdkconfig.close();
+           f.close();
         }
     }
+}
+
+void MainWindow::outputOptions(QTextStream* out)
+{
+    bool bFirst = false;
+    QMapIterator<QString, QString> iter(*sdkconfig);
+    if(sdkconfig->count()== 0)
+        return;
+    while(iter.hasNext())
+    {
+        iter.next();
+        if(iter.value().isEmpty())
+            continue;
+        if(!bFirst)
+        {
+            *out << "\n\n\tDEFINES+=\t" << iter.key() << "=" << iter.value() << " ";
+            bFirst= true;
+        }
+        else
+        {
+            *out << "\\\n\t\t\t" << iter.key() << "=" << iter.value() << " ";
+        }
+    }
+}
+
+void MainWindow::on_dirIgnoreAction(QAction * act)
+{
+
+    dir_ignore.remove(act->text());
+    dir_ignore.insert(act->text(), act->isChecked());
+}
+
+void MainWindow::onAddDirToIgnore()
+{
+  QString dir = QInputDialog::getText(this, "Add directory to exclude", "Add the name of a directory in the project's root to ignore,");
+  if(!dir.isEmpty())
+  {
+      if(!dir_ignore.contains(dir))
+          dir_ignore.insert(dir, true);
+  }
 }
