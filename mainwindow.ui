@@ -82,6 +82,7 @@
     <addaction name="actionList_components"/>
     <addaction name="menuDirectories_to_ignore"/>
     <addaction name="actionAdd_directory_to_ignore"/>
+    <addaction name="actionRun_menuconfig"/>
    </widget>
    <addaction name="menuFile"/>
    <addaction name="menuView"/>
@@ -191,6 +192,11 @@
   <action name="actionSave_sdkconfig_changes">
    <property name="text">
     <string>Save sdkconfig changes</string>
+   </property>
+  </action>
+  <action name="actionRun_menuconfig">
+   <property name="text">
+    <string>Run menuconfig</string>
    </property>
   </action>
  </widget>

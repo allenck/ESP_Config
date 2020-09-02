@@ -49,3 +49,6 @@ SUBDIRS += \
 
 RESOURCES += \
     resources.qrc
+
+DISTFILES += \
+    runMenuconfig.sh

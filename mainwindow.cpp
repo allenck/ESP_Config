@@ -22,6 +22,7 @@
 #include "sdkconfigdatamodel.h"
 #include "options.h"
 #include "optionwidget.h"
+#include <QProcessEnvironment>
 
 MainWindow::MainWindow(QWidget *parent) :
     QMainWindow(parent),
@@ -61,6 +62,7 @@ MainWindow::MainWindow(QWidget *parent) :
     connect(ui->menuTools, SIGNAL(aboutToShow()), this, SLOT(onToolsMenuAboutToShow()));
     connect(ui->actionAdd_directory_to_ignore, SIGNAL(triggered(bool)), this, SLOT(onAddDirToIgnore()));
     connect(ui->actionSave_sdkconfig_changes, SIGNAL(triggered(bool)), this, SLOT(onSaveSdkconfig()));
+    connect(ui->actionRun_menuconfig, SIGNAL(triggered(bool)), this, SLOT(onRun_menuconfig()));
 
     env = QProcessEnvironment::systemEnvironment();
     toolChainPath = env.value("Home", "")+ QDir::separator() +"esp/xtensa-esp32-elf" +QDir::separator();
@@ -90,6 +92,7 @@ void MainWindow::onToolsMenuAboutToShow()
 {
  ui->actionList_components->setEnabled(pwd != nullptr);
  //actionDirectories_to_ignore
+ ui->actionRun_menuconfig->setEnabled(!pwd.isEmpty());
 }
 
 bool MainWindow::parseMakefile(QTextStream* stream, QString path, QString fn)
@@ -1418,4 +1421,40 @@ void MainWindow::onSaveSdkconfig()
 
         }
     }
+}
+
+void MainWindow::onRun_menuconfig()
+{
+    QStringList arguments;
+    QProcessEnvironment env = QProcessEnvironment::systemEnvironment();
+    QFile file(QDir::currentPath()+QDir::separator()+"runMenuconfig.sh");
+    if(file.open(QIODevice::ReadWrite | QIODevice::Truncate | QIODevice::Text))
+    {
+        QTextStream out(&file);
+        out << "#!/bin/sh\n"
+            << "env\n"
+            <<  ". " << env.value("IDF_PATH") <<"/export.sh\n"
+            <<   "idf.py" << " menuconfig\n";
+        file.setPermissions(QFileDevice::ReadOwner | QFileDevice::WriteOwner| QFile::ExeOwner);
+        file.close();
+
+        qDebug() << "created:" << QDir::currentPath()+QDir::separator()+ file.fileName();
+        QProcess *process = new QProcess();
+        // keep your arguments separated to avoid surprises with escaping
+        QString exec = "xterm";
+        QStringList params;
+        params << "-hold" << "-e" << file.fileName() ;
+        //QString exec = "gnome-terminal";
+        process->setWorkingDirectory(pwd);
+        process->setProgram(exec);
+        process->setArguments(params);
+        qint64 pid;
+        process->startDetached(&pid);
+        process->waitForFinished();
+    }
+    else
+    {
+        qDebug() << file.errorString()<< " " << file.fileName();
+    }
+
 }

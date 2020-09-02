@@ -97,6 +97,7 @@ private slots:
     void processStdOutput();
     void processErrOutput();
     void on_dirIgnoreAction(QAction*);
+    void onRun_menuconfig();
 
 protected:
     void createDialog(QString label, QProcessEnvironment env);
