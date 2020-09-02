@@ -16,7 +16,7 @@
   <widget class="QWidget" name="centralWidget">
    <layout class="QVBoxLayout" name="verticalLayout">
     <item>
-     <widget class="QTextEdit" name="textEdit"/>
+     <widget class="QTextEdit" name="report"/>
     </item>
     <item>
      <widget class="QTableView" name="tv1"/>
@@ -83,6 +83,7 @@
     <addaction name="menuDirectories_to_ignore"/>
     <addaction name="actionAdd_directory_to_ignore"/>
     <addaction name="actionRun_menuconfig"/>
+    <addaction name="actionAnalize_project"/>
    </widget>
    <addaction name="menuFile"/>
    <addaction name="menuView"/>
@@ -197,6 +198,11 @@
   <action name="actionRun_menuconfig">
    <property name="text">
     <string>Run menuconfig</string>
+   </property>
+  </action>
+  <action name="actionAnalize_project">
+   <property name="text">
+    <string>Analyze project</string>
    </property>
   </action>
  </widget>

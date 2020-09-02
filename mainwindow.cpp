@@ -23,6 +23,7 @@
 #include "options.h"
 #include "optionwidget.h"
 #include <QProcessEnvironment>
+#include <QMessageBox>
 
 MainWindow::MainWindow(QWidget *parent) :
     QMainWindow(parent),
@@ -57,12 +58,14 @@ MainWindow::MainWindow(QWidget *parent) :
     connect(ui->actionAdd_define, SIGNAL(triggered(bool)), this, SLOT(onAddDefine()));
     connect(ui->actionAdd_path_to_components_or_SDK, SIGNAL(triggered(bool)), this, SLOT(onAddPath()));
     connect(ui->actionList_components, SIGNAL(triggered(bool)), this, SLOT(onListComponents()));
-    ui->textEdit->setHidden(true);
+    ui->report->setHidden(true);
     connect(ui->menuFile, SIGNAL(aboutToShow()), this, SLOT(onFileMenuAboutToShow()));
     connect(ui->menuTools, SIGNAL(aboutToShow()), this, SLOT(onToolsMenuAboutToShow()));
     connect(ui->actionAdd_directory_to_ignore, SIGNAL(triggered(bool)), this, SLOT(onAddDirToIgnore()));
     connect(ui->actionSave_sdkconfig_changes, SIGNAL(triggered(bool)), this, SLOT(onSaveSdkconfig()));
     connect(ui->actionRun_menuconfig, SIGNAL(triggered(bool)), this, SLOT(onRun_menuconfig()));
+    connect(watcher, SIGNAL(fileChanged(QString)), this, SLOT(sdkconfigChanged(QString)));
+    connect(ui->actionAnalize_project, SIGNAL(triggered(bool)), this, SLOT(onAnalyzeProject()));
 
     env = QProcessEnvironment::systemEnvironment();
     toolChainPath = env.value("Home", "")+ QDir::separator() +"esp/xtensa-esp32-elf" +QDir::separator();
@@ -93,6 +96,7 @@ void MainWindow::onToolsMenuAboutToShow()
  ui->actionList_components->setEnabled(pwd != nullptr);
  //actionDirectories_to_ignore
  ui->actionRun_menuconfig->setEnabled(!pwd.isEmpty());
+ ui->actionAnalize_project->setEnabled(!pwd.isEmpty());
 }
 
 bool MainWindow::parseMakefile(QTextStream* stream, QString path, QString fn)
@@ -343,10 +347,21 @@ bool MainWindow::onMakefile()
  QFileInfo info(fileNames.at(0));
  qDebug() << "process " << fileNames.at(0);
 
+ pwd = info.absolutePath();
+ ui->report->clear();
+ ui->report->setTextColor(QColor("black"));
+ analyzeProject();
+
+
+ if(!watcher->files().isEmpty())
+ {
+     watcher->removePaths(watcher->files());
+ }
 
  QDir pwd_dir(info.canonicalPath());
+
  QStringList pwd_list = pwd_dir.entryList(QDir::AllEntries | QDir::NoDotAndDotDot);
- if(pwd_list.contains("CMakeLists.txt") ||pwd_list.contains("Makefile"))
+ if(pwd_list.contains("CMakeLists.txt") || pwd_list.contains("Makefile"))
  {
 
      //components = new Components(info.path());
@@ -356,6 +371,7 @@ bool MainWindow::onMakefile()
      {
       QFileInfo info(fileNames.at(0));
       pwd = info.absolutePath();
+
       env.insert("PROJECT_PATH", pwd);
       componentDirs.insert("PROJECT_PATH", new Components(info.path(), dir_ignore));
 
@@ -396,6 +412,9 @@ bool MainWindow::onMakefile()
              otherFiles.insert(fileName, pwd_dir.path());
      }
  }
+ QFile f(pwd + QDir::separator() + "sdkconfig");
+ if(f.exists())
+     watcher->addPath(f.fileName());
  procesSdkconfig();
  viewOptions();
  _dirty = true;
@@ -1163,12 +1182,16 @@ QProcess::ExitStatus MainWindow::listComponents(QString wd)
 
 void MainWindow::processStdOutput()
 {
- ui->textEdit->setTextColor(QColor("black"));
+ ui->report->setTextColor(QColor("black"));
  QString output = makeProcess->readAllStandardOutput();
- ui->textEdit->append(output);
+ //ui->report->append(output);
  QStringList sl = output.split("\n");
  foreach (QString line, sl)
  {
+     if(line.startsWith("WARNING"))
+         ui->report->setTextColor(QColor("#FF8C00"));
+     else
+         ui->report->setTextColor(Qt::black);
   if(line.startsWith("COMPONENT_DIRS"))
    currVariable = "COMPONENT_DIRS";
   if(line.startsWith("TEST_COMPONENTS"))
@@ -1210,14 +1233,17 @@ void MainWindow::processStdOutput()
      componentDirs.value(key)->includeDirs.append(info.absoluteFilePath());
    }
   }
+  ui->report->append(line);
  }
+ ui->report->setTextColor(Qt::black);
 }
 
 void MainWindow::processErrOutput()
 {
- ui->textEdit->setTextColor(QColor("red"));
+ ui->report->setTextColor(QColor("red"));
  //qDebug() << makeProcess->readAllStandardError();  // read error channel
- ui->textEdit->append(makeProcess->readAllStandardError());
+ ui->report->append(makeProcess->readAllStandardError());
+ ui->report->setTextColor(QColor("black"));
 }
 
 void MainWindow::onListComponents()
@@ -1226,8 +1252,8 @@ void MainWindow::onListComponents()
  componentDirs.remove("COMPONENT_DIRS");
  if(pwd != nullptr)
  {
-  ui->textEdit->setVisible(true);
-  ui->textEdit->clear();
+  ui->report->setVisible(true);
+  //ui->textEdit->clear();
   listComponents(pwd);
  }
 }
@@ -1431,10 +1457,18 @@ void MainWindow::onRun_menuconfig()
     if(file.open(QIODevice::ReadWrite | QIODevice::Truncate | QIODevice::Text))
     {
         QTextStream out(&file);
-        out << "#!/bin/sh\n"
-            << "env\n"
-            <<  ". " << env.value("IDF_PATH") <<"/export.sh\n"
-            <<   "idf.py" << " menuconfig\n";
+        if(esp_ver >= 4.0)
+        {
+            out << "#!/bin/sh\n"
+                << "env\n"
+                <<  ". " << env.value("IDF_PATH") <<"/export.sh\n"
+                <<   "idf.py" << " menuconfig\n";
+        }
+        else
+        {
+            out << "#!/bin/sh\n"
+                << "make" << " menuconfig\n";
+        }
         file.setPermissions(QFileDevice::ReadOwner | QFileDevice::WriteOwner| QFile::ExeOwner);
         file.close();
 
@@ -1463,4 +1497,201 @@ void MainWindow::onRun_menuconfig()
         qDebug() << file.errorString()<< " " << file.fileName();
     }
 
+}
+
+void MainWindow::sdkconfigChanged(QString path)
+{
+    int rslt = QMessageBox::question(this, tr("Configuration Changed"), tr("The configuration (sdkconfig) has changed.\nDo you wish to process these changes? "),QMessageBox::Yes, QMessageBox::No);
+    switch (rslt) {
+    case QMessageBox::Yes:
+        procesSdkconfig();
+        break;
+    default:
+        break;
+    }
+}
+
+int MainWindow::analyzeProject()
+{
+    int rslt;
+    QProcessEnvironment env = QProcessEnvironment::systemEnvironment();
+
+    ui->report->clear();
+    QDir pwd_dir(pwd);
+    bool bGitPresent = false;
+    bool bCMakePresent = false;
+    bool hasMakefile, hasCMakeLists, hasBuild, hasSdkconfig, hasSdkconfig_defaults, hasKconfig, hasComponents, hasMain, hasInclude, hasCMakeFiles;
+    QProcess* process = new QProcess();
+    process->start(tr("which"), QStringList({"git"}),QIODevice::ReadWrite);
+
+    // Wait for it to start
+    if(!process->waitForStarted())
+        return 0;
+
+    // Continue reading the data until EOF reached
+    QByteArray data;
+
+    while(process->waitForReadyRead())
+        data.append(process->readAll());
+
+    // Output the data
+    qDebug(data.data());
+    qDebug("Done!");
+    if(!data.isEmpty())
+    {
+        bGitPresent = true;
+        ui->report->append("git is installed!\n");
+    }
+    else
+    {
+        ui->report->append("git doesn't appear to be installed on this system!");
+    }
+    if(bGitPresent)
+    {
+        if(!idf_path.isEmpty())
+        {
+            data.clear();
+            process->setWorkingDirectory(idf_path);
+            process->start("git", QStringList({"branch"}),QIODevice::ReadWrite);
+            if(!process->waitForStarted())
+            {
+                qDebug() << "error running git branch " << idf_path;
+            }
+            else
+            {
+                while(process->waitForReadyRead())
+                    data.append(process->readAll());
+            }
+            // Output the data
+            qDebug(data.data());
+            qDebug("Done!");
+            if(!data.isEmpty())
+            {
+                QStringList sl = QString::fromStdString(data.toStdString()).split("\n");
+                foreach (QString s, sl)
+                {
+                    if(s.startsWith("*"))
+                    {
+                        bool ok;
+                        esp_ver = s.mid(11).toFloat(&ok);
+                        if(ok)
+                        {
+                            ui->report->append("ESP-IDF is version " + QString::number(esp_ver) + "\n");
+                            break;
+                        }
+                        rslt =0;
+                        qDebug("error reading git version");
+                        break;
+                    }
+                }
+            }
+        }
+    }
+
+    data.clear();
+    process->start(tr("cmake"), QStringList({"--version"}),QIODevice::ReadWrite);
+
+    // Wait for it to start
+    if(!process->waitForStarted())
+    {
+        qDebug("error running cmake");
+    }
+    else
+    {
+        while(process->waitForReadyRead())
+            data.append(process->readAll());
+    }
+    // Output the data
+    qDebug(data.data());
+    qDebug("Done!");
+    if(!data.isEmpty())
+    {
+        bCMakePresent = true;
+        QString rslt = QString::fromStdString(data.toStdString());
+        QStringList sl = rslt.split("\n");
+        ui->report->append(tr("cmake is installed! %1\n").arg(sl.at(0)));
+    }
+    else
+    {
+        ui->report->append("cmake doesn't appear to be installed on this system!");
+    }
+
+
+    QFileInfoList infoList = pwd_dir.entryInfoList(QDir::AllEntries | QDir::NoDotAndDotDot);
+    foreach (QFileInfo entry, infoList) {
+        if(entry.isDir())
+        {
+            if(entry.fileName() == "include")
+                hasInclude = true;
+            if(entry.fileName() == "CMakeFiles")
+                hasCMakeFiles = true;
+            if(entry.fileName() == "build")
+                hasBuild = true;
+            if(entry.fileName() == "components")
+                hasComponents = true;
+            if(entry.fileName() == "main")
+                hasMain = true;
+        }
+        else
+        {
+            if(entry.fileName() == "sdkconfig")
+                hasSdkconfig = true;
+            if(entry.fileName() == "Makefile")
+                hasMakefile = true;
+            if(entry.fileName() == "sdkconfig.defaults")
+                hasSdkconfig_defaults = true;
+            if(entry.fileName() == "kconfig")
+                hasKconfig = true;
+            if(entry.fileName() == "CMakeLists.txt")
+                hasCMakeLists = true;
+        }
+
+    }
+    ui->report->append("has Makefile="+ QString(hasMakefile?"true":"false")+ "\n");
+    ui->report->append("has CMakeLists="+ QString(hasCMakeLists?"true":"false")+ "\n");
+    ui->report->append("has build="+ QString(hasBuild?"true":"false")+ "\n");
+    ui->report->append("has sdkconfig="+ QString(hasSdkconfig?"true":"false")+ "\n");
+    ui->report->append("has sdkconfig.default="+ QString(hasSdkconfig_defaults?"true":"false")+ "\n");
+    ui->report->append("has kconfig="+ QString(hasKconfig?"true":"false")+ "\n");
+    ui->report->append("has components="+ QString(hasComponents?"true":"false")+ "\n");
+    ui->report->append("has main="+ QString(hasMain?"true":"false")+ "\n");
+    ui->report->append("has include="+ QString(hasInclude?"true":"false")+ "\n");
+    ui->report->append("has CMakeFiles="+ QString(hasCMakeFiles?"true":"false")+ "\n");
+
+    // Do a sanity check on the project.
+    if(!(hasMakefile || hasCMakeLists) || !hasMain)
+    {
+        ui->report->setTextColor(Qt::red);
+        ui->report->append(tr("Missing project Makefile or CMakeLists.txt or main dictory. "));
+        ui->report->setTextColor(Qt::black);
+        ui->report->append(tr("Are you in the correct directory?\n"));
+
+    }
+    if(esp_ver < 4.0 && hasCMakeLists)
+    {
+        ui->report->setTextColor(QColor("#FF8C00"));
+        ui->report->append(tr("ESP_IDF version is %1 but project contains a CMakeLists.txt file. ").arg(esp_ver));
+        ui->report->setTextColor(Qt::black);
+        ui->report->append(tr("Maybe your ESP_IDF branch should be set to ver 4.0 or greater?\n"));
+    }
+    if(esp_ver >= 4.0 && !hasCMakeLists)
+    {
+        ui->report->setTextColor(Qt::red);
+        ui->report->append(tr("ESP_IDF version is %1 but project has no CMakeLists.txt file. ").arg(esp_ver));
+        ui->report->setTextColor(Qt::black);
+        ui->report->append(tr("Maybe your ESP_IDF branch should be set to ver 3.2 or less?\n"));
+    }
+    if(hasKconfig || hasSdkconfig || hasSdkconfig_defaults)
+    {
+        ui->report->setTextColor(QColor("#FF8C00"));
+        ui->report->append(tr("Configuration files are present. Maybe you should run menuconfig.\n"));
+        ui->report->setTextColor(Qt::black);
+    }
+
+    return rslt;
+}
+
+void MainWindow::onAnalyzeProject()
+{
+    analyzeProject();
 }

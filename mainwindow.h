@@ -9,6 +9,7 @@
 #include <QStack>
 #include <QActionGroup>
 #include <QHash>
+#include <QFileSystemWatcher>
 
 namespace Ui {
 class MainWindow;
@@ -28,7 +29,7 @@ public:
     bool parseMakefile(QTextStream *stream, QString path, QString fn);
     bool parseSourceFile(QString path);
     QString headerFilePath(QString name);
-
+    int analyzeProject();
 
 public slots:
     bool onMakefile();
@@ -43,6 +44,7 @@ public slots:
     void onListComponents();
     void onAddDirToIgnore();
     void onSaveSdkconfig();
+    void onAnalyzeProject();
 
 private:
     Ui::MainWindow *ui;
@@ -85,6 +87,9 @@ private:
     bool pathHasSources(QString);
     void procesSdkconfig();
     void outputOptions(QTextStream* out);
+    QFileSystemWatcher* watcher = new QFileSystemWatcher();
+    float esp_ver;
+
 
 private slots:
     void onDialogOk();
@@ -98,6 +103,7 @@ private slots:
     void processErrOutput();
     void on_dirIgnoreAction(QAction*);
     void onRun_menuconfig();
+    void sdkconfigChanged(QString path);
 
 protected:
     void createDialog(QString label, QProcessEnvironment env);
