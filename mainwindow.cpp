@@ -1441,9 +1441,15 @@ void MainWindow::onRun_menuconfig()
         qDebug() << "created:" << QDir::currentPath()+QDir::separator()+ file.fileName();
         QProcess *process = new QProcess();
         // keep your arguments separated to avoid surprises with escaping
-        QString exec = "xterm";
+
+        //QString exec = "xterm";
+        //QStringlist params << "-hold" << "-e" << file.fileName() ;
+
+        //gnome-terminal --working-directory=/home/allen/eclipse-workspace/esp-t4-ttf-demo --command=/home/allen/Projects/ESP_Config/runMenuconfig.sh
+        QString exec = "gnome-terminal";
         QStringList params;
-        params << "-hold" << "-e" << file.fileName() ;
+        params << "--working-directory="+pwd << "--command="+file.fileName();
+
         //QString exec = "gnome-terminal";
         process->setWorkingDirectory(pwd);
         process->setProgram(exec);
